@@ -124,12 +124,8 @@ function AppInner({ repoRoot }: AppInnerProps) {
     dispatch({ type: "SET_MODE", mode: "normal" });
     if (activeSession) {
       await closeSession(activeSession);
-      // If no sessions left, exit
-      if (state.sessions.length <= 1) {
-        exit();
-      }
     }
-  }, [dispatch, activeSession, closeSession, state.sessions.length, exit]);
+  }, [dispatch, activeSession, closeSession]);
 
   const handleModalCancel = useCallback(() => {
     dispatch({ type: "SET_MODE", mode: "normal" });
@@ -139,6 +135,8 @@ function AppInner({ repoRoot }: AppInnerProps) {
     const { cleanupAllSessions } = await import("./services/cleanup.js");
     await cleanupAllSessions(state.sessions, repoRoot);
     exit();
+    process.stdout.write("\x1b[?25h"); // show cursor
+    process.stdout.write("\x1b[?1049l"); // leave alt screen
   }, [state.sessions, repoRoot, exit]);
 
   useInputRouter({
