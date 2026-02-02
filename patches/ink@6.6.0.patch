@@ -1,0 +1,30 @@
+diff --git a/build/ink.js b/build/ink.js
+index 0c1e72ac855c9a43a40be705dbd97965cfe6fe3d..398cac2c131dc4b67fad5a84037e1e75f32c15c0 100644
+--- a/build/ink.js
++++ b/build/ink.js
+@@ -66,7 +66,7 @@ export default class Ink {
+         this.isUnmounted = false;
+         // Store last output to only rerender when needed
+         this.lastOutput = '';
+-        this.lastOutputHeight = 0;
++        this.lastOutputHeight = options.stdout.rows ?? 0;
+         this.lastTerminalWidth = this.getTerminalWidth();
+         // This variable is used only in debug mode to store full static output
+         // so that it's rerendered every time, not just new static parts, like in non-debug mode
+@@ -179,10 +179,14 @@ export default class Ink {
+             this.fullStaticOutput += staticOutput;
+         }
+         if (this.lastOutputHeight >= this.options.stdout.rows) {
+-            this.options.stdout.write(ansiEscapes.clearTerminal + this.fullStaticOutput + output);
++            if (this.options.incrementalRendering && this.lastOutput !== '' && !hasStaticOutput) {
++                this.throttledLog(output);
++            } else {
++                this.options.stdout.write('\x1b[?2026h' + '\x1b[H' + this.fullStaticOutput + output + '\x1b[J' + '\x1b[?2026l');
++                this.log.sync(output);
++            }
+             this.lastOutput = output;
+             this.lastOutputHeight = outputHeight;
+-            this.log.sync(output);
+             return;
+         }
+         // To ensure static output is cleanly rendered before main output, clear main output first

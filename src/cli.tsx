@@ -12,6 +12,9 @@ async function main() {
     process.exit(1);
   }
 
+  // Clear screen and scrollback (Cmd+K equivalent) before entering Ink
+  process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+
   const { waitUntilExit } = render(<App repoRoot={repoRoot} />, {
     exitOnCtrlC: false,
     maxFps: 20,
