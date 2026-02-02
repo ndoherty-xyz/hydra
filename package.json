@@ -1,0 +1,29 @@
+{
+  "name": "hydra",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tsx src/cli.tsx",
+    "build": "tsc",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "@xterm/headless": "^5.5.0",
+    "ink": "^6.0.0",
+    "node-pty": "^1.2.0-beta.4",
+    "react": "^19.0.0",
+    "simple-git": "^3.27.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "node-pty"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
