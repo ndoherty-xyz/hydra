@@ -31,9 +31,6 @@ export const StatusBar = React.memo(function StatusBar() {
       )}
       <Box flexGrow={1} />
       <Text backgroundColor="gray" color="black">
-        {` pty:${activeSession ? `${activeSession.terminal.cols}x${activeSession.terminal.rows}` : "-"} stdout:${process.stdout.columns}x${process.stdout.rows} `}
-      </Text>
-      <Text backgroundColor="gray" color="black">
         {" ^B,N:new  ^B,W:close  ^B,[/]:tabs  ^B,Q:quit "}
       </Text>
     </Box>

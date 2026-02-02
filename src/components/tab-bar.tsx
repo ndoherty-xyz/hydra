@@ -10,7 +10,7 @@ export const TabBar = React.memo(function TabBar() {
       <Text bold color="green">
         {" hydra "}
       </Text>
-      <Text color="gray">|</Text>
+      <Text color="gray">| </Text>
       {sessions.length === 0 ? (
         <Text color="gray"> no sessions (Ctrl+B, N to create)</Text>
       ) : (

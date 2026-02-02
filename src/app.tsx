@@ -49,7 +49,7 @@ function AppInner({ repoRoot }: AppInnerProps) {
     (s) => s.id === state.activeSessionId,
   );
 
-  const notifyDirtyRef = useRef<() => void>(() => {});
+  const notifyDirtyRef = useRef<() => void>(() => { });
 
   const activeSessionIdRef = useRef(state.activeSessionId);
   activeSessionIdRef.current = state.activeSessionId;
@@ -86,7 +86,7 @@ function AppInner({ repoRoot }: AppInnerProps) {
     (async () => {
       await cleanupOrphans();
       await restoreExistingSessions();
-    })().catch(() => {});
+    })().catch(() => { });
   }, [cleanupOrphans, restoreExistingSessions]);
 
   // Install signal handlers for clean shutdown
@@ -163,6 +163,7 @@ function AppInner({ repoRoot }: AppInnerProps) {
             borderStyle="single"
             borderColor="gray"
             flexDirection="column"
+            paddingX={1}
           >
             {state.mode === "creating-session" ? (
               <SessionCreator
