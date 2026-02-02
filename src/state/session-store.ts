@@ -1,11 +1,10 @@
-import { createContext, useContext, useReducer, type Dispatch } from "react";
+import { EventEmitter } from "node:events";
 import type { AppState, AppAction } from "./types.js";
 
 export const initialState: AppState = {
   sessions: [],
   activeSessionId: null,
   mode: "normal",
-  scrollOffset: 0,
 };
 
 export function appReducer(state: AppState, action: AppAction): AppState {
@@ -16,7 +15,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         sessions: [...state.sessions, action.session],
         activeSessionId: action.session.id,
         mode: "normal",
-        scrollOffset: 0,
       };
     }
 
@@ -39,7 +37,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         sessions: remaining,
         activeSessionId: nextActiveId,
         mode: "normal",
-        scrollOffset: 0,
       };
     }
 
@@ -47,7 +44,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         activeSessionId: action.sessionId,
-        scrollOffset: 0,
       };
     }
 
@@ -60,7 +56,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         activeSessionId: state.sessions[next]!.id,
-        scrollOffset: 0,
       };
     }
 
@@ -73,7 +68,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         activeSessionId: state.sessions[prev]!.id,
-        scrollOffset: 0,
       };
     }
 
@@ -83,7 +77,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         activeSessionId: session.id,
-        scrollOffset: 0,
       };
     }
 
@@ -102,40 +95,35 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
-    case "SCROLL_UP": {
-      return {
-        ...state,
-        scrollOffset: state.scrollOffset + action.lines,
-      };
-    }
-
-    case "SCROLL_DOWN": {
-      return {
-        ...state,
-        scrollOffset: Math.max(0, state.scrollOffset - action.lines),
-      };
-    }
-
-    case "RESET_SCROLL": {
-      return { ...state, scrollOffset: 0 };
-    }
-
     default:
       return state;
   }
 }
 
-export const AppStateContext = createContext<AppState>(initialState);
-export const AppDispatchContext = createContext<Dispatch<AppAction>>(() => {});
+export class AppStore extends EventEmitter {
+  private state: AppState;
 
-export function useAppState() {
-  return useContext(AppStateContext);
-}
+  constructor() {
+    super();
+    this.state = initialState;
+  }
 
-export function useAppDispatch() {
-  return useContext(AppDispatchContext);
-}
+  getState(): AppState {
+    return this.state;
+  }
 
-export function useAppStore() {
-  return useReducer(appReducer, initialState);
+  dispatch(action: AppAction): void {
+    const prevState = this.state;
+    this.state = appReducer(this.state, action);
+    if (this.state !== prevState) {
+      this.emit("change", this.state);
+    }
+  }
+
+  subscribe(listener: (state: AppState) => void): () => void {
+    this.on("change", listener);
+    return () => {
+      this.off("change", listener);
+    };
+  }
 }

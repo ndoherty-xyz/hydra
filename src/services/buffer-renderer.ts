@@ -73,7 +73,7 @@ const DEFAULT_STYLE: CellStyle = {
   strikethrough: false,
 };
 
-function renderLine(line: IBufferLine, cols: number, cell: IBufferCell): string {
+export function renderLine(line: IBufferLine, cols: number, cell: IBufferCell): string {
   // Single pass: emit SGR when style changes, emit char or space for every column.
   // No trailing-space trimming — let overflow="hidden" on the Ink Box handle truncation.
   const segments: string[] = [];

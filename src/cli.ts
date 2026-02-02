@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-import React from "react";
-import { render } from "ink";
-import { App } from "./app.js";
+import { HydraApp } from "./app.js";
 import { getRepoRoot } from "./utils/git.js";
 
 async function main() {
@@ -13,15 +11,8 @@ async function main() {
     process.exit(1);
   }
 
-  // Clear screen and scrollback (Cmd+K equivalent) before entering Ink
-  process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
-
-  const { waitUntilExit } = render(<App repoRoot={repoRoot} />, {
-    exitOnCtrlC: false,
-    maxFps: 20,
-  });
-
-  await waitUntilExit();
+  const app = new HydraApp(repoRoot);
+  await app.run();
   process.exit(0);
 }
 

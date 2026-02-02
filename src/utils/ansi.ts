@@ -7,6 +7,33 @@ export function sgr(...codes: number[]): string {
 
 export const RESET = sgr(0);
 
+// Cursor positioning
+export function cursorTo(row: number, col: number): string {
+  return `${ESC}${row};${col}H`;
+}
+
+// Set scroll region (DECSTBM) - rows are 1-indexed
+export function setScrollRegion(top: number, bottom: number): string {
+  return `${ESC}${top};${bottom}r`;
+}
+
+// Reset scroll region to full screen
+export function resetScrollRegion(): string {
+  return `${ESC}r`;
+}
+
+// Clear entire line
+export function clearLine(): string {
+  return `${ESC}2K`;
+}
+
+// Hide/show cursor
+export const HIDE_CURSOR = "\x1b[?25l";
+export const SHOW_CURSOR = "\x1b[?25h";
+
+// Clear screen
+export const CLEAR_SCREEN = `${ESC}2J${ESC}H`;
+
 // Build SGR params for a foreground color based on xterm color mode
 export function fgColorParams(colorMode: number, color: number): number[] {
   // colorMode: 0 = default, 1 = palette (16), 2 = palette (256), 3 = RGB
