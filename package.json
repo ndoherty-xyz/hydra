@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
+  "bin": {
+    "hydra": "dist/cli.js"
+  },
   "scripts": {
     "dev": "tsx src/cli.tsx",
     "build": "tsc",
