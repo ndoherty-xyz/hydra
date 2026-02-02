@@ -63,7 +63,7 @@ function AppInner({ repoRoot }: AppInnerProps) {
     [],
   );
 
-  const { createSession, closeSession, resizeAllSessions, cleanupOrphans } =
+  const { createSession, closeSession, resizeAllSessions, cleanupOrphans, restoreExistingSessions } =
     useSessions(dispatch, repoRoot, innerCols, innerRows, onPtyData);
 
   // Resize sessions when terminal size changes
@@ -78,10 +78,16 @@ function AppInner({ repoRoot }: AppInnerProps) {
     }
   }, [innerCols, innerRows, state.sessions, resizeAllSessions]);
 
-  // Cleanup orphans on startup
+  // Cleanup orphans and restore existing worktree sessions on startup
+  const hasRestoredRef = useRef(false);
   useEffect(() => {
-    cleanupOrphans().catch(() => {});
-  }, [cleanupOrphans]);
+    if (hasRestoredRef.current) return;
+    hasRestoredRef.current = true;
+    (async () => {
+      await cleanupOrphans();
+      await restoreExistingSessions();
+    })().catch(() => {});
+  }, [cleanupOrphans, restoreExistingSessions]);
 
   // Install signal handlers for clean shutdown
   const sessionsRef = useRef(state.sessions);
@@ -89,11 +95,10 @@ function AppInner({ repoRoot }: AppInnerProps) {
   useEffect(() => {
     const removeHandlers = installSignalHandlers(
       () => sessionsRef.current,
-      repoRoot,
       exit,
     );
     return removeHandlers;
-  }, [repoRoot, exit]);
+  }, [exit]);
 
   const onCreateSession = useCallback(() => {
     dispatch({ type: "SET_MODE", mode: "creating-session" });
@@ -133,11 +138,11 @@ function AppInner({ repoRoot }: AppInnerProps) {
 
   const handleQuit = useCallback(async () => {
     const { cleanupAllSessions } = await import("./services/cleanup.js");
-    await cleanupAllSessions(state.sessions, repoRoot);
+    await cleanupAllSessions(state.sessions);
     exit();
     process.stdout.write("\x1b[?25h"); // show cursor
     process.stdout.write("\x1b[?1049l"); // leave alt screen
-  }, [state.sessions, repoRoot, exit]);
+  }, [state.sessions, exit]);
 
   useInputRouter({
     mode: state.mode,

@@ -1,17 +1,13 @@
 import type { Session } from "../state/types.js";
 import { killPty } from "./pty-manager.js";
 import { disposeTerminal } from "./terminal-emulator.js";
-import { WorktreeManager } from "./worktree-manager.js";
-
 /**
- * Clean up all active sessions: kill PTYs, dispose terminals, remove worktrees.
+ * Clean up all active sessions: kill PTYs and dispose terminals.
+ * Worktrees are intentionally preserved so they can be restored on next launch.
  */
 export async function cleanupAllSessions(
   sessions: Session[],
-  repoRoot: string,
 ): Promise<void> {
-  const wm = new WorktreeManager(repoRoot);
-
   for (const session of sessions) {
     try {
       killPty(session.pty);
@@ -23,11 +19,6 @@ export async function cleanupAllSessions(
     } catch {
       // Already disposed
     }
-    try {
-      await wm.removeWorktree(session.worktreePath);
-    } catch {
-      // Best effort
-    }
   }
 }
 
@@ -37,7 +28,6 @@ export async function cleanupAllSessions(
  */
 export function installSignalHandlers(
   getSessions: () => Session[],
-  repoRoot: string,
   onExit: () => void,
 ): () => void {
   let cleaning = false;
@@ -47,7 +37,7 @@ export function installSignalHandlers(
     cleaning = true;
 
     try {
-      await cleanupAllSessions(getSessions(), repoRoot);
+      await cleanupAllSessions(getSessions());
     } catch {
       // Best effort
     }

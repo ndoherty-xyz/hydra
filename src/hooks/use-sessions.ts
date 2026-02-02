@@ -22,11 +22,11 @@ export function useSessions(
   onPtyDataRef.current = onPtyData;
 
   const createSession = useCallback(
-    async (branch: string) => {
+    async (branch: string, existingWorktreePath?: string) => {
       const wm = worktreeManagerRef.current;
 
-      // 1. Create worktree
-      const worktreePath = await wm.addWorktree(branch);
+      // 1. Create worktree (or use existing one)
+      const worktreePath = existingWorktreePath ?? await wm.addWorktree(branch);
 
       // 2. Create xterm terminal
       const terminal = createTerminal(cols, paneRows);
@@ -122,5 +122,13 @@ export function useSessions(
     await wm.cleanupOrphans();
   }, []);
 
-  return { createSession, closeSession, resizeAllSessions, cleanupOrphans };
+  const restoreExistingSessions = useCallback(async () => {
+    const wm = worktreeManagerRef.current;
+    const worktrees = await wm.listWorktrees();
+    for (const wt of worktrees) {
+      await createSession(wt.branch, wt.path);
+    }
+  }, [createSession]);
+
+  return { createSession, closeSession, resizeAllSessions, cleanupOrphans, restoreExistingSessions };
 }
