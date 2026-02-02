@@ -6,6 +6,8 @@ A terminal multiplexer for Claude Code. Run multiple Claude sessions side-by-sid
 
 Hydra lets you work on multiple branches of a repo simultaneously. Each session gets its own isolated Git worktree with a dedicated Claude Code instance. Sessions persist across restarts — close and reopen Hydra and your worktrees are still there.
 
+Output streams into your terminal's native scrollback buffer, so you can scroll back through history with your mouse wheel or scrollbar — no virtual scrolling needed.
+
 ## Prerequisites
 
 - Node.js 16+
@@ -45,23 +47,45 @@ All commands use a **Ctrl+B** prefix (like tmux):
 | `Ctrl+B`, `]` | Next tab |
 | `Ctrl+B`, `[` | Previous tab |
 | `Ctrl+B`, `1-9` | Jump to tab |
-| `Ctrl+B`, `A` / `Up` | Scroll up |
-| `Ctrl+B`, `B` / `Down` | Scroll down |
 | `Ctrl+B`, `Q` | Quit |
 
 ## Architecture
 
-Built with [React](https://react.dev/) + [Ink](https://github.com/vadimdemedes/ink) for the terminal UI, [@xterm/headless](https://github.com/xtermjs/xterm.js) for terminal emulation, and [node-pty](https://github.com/microsoft/node-pty) for spawning shell processes.
+Uses ANSI scroll regions for rendering — no React or Ink. The terminal is split into a scrollable output region and a fixed chrome bar at the bottom:
+
+```
+╔══════════════════════════════════════════╗
+║                                          ║
+║  scrollable output                       ║
+║  (native terminal scrollback)            ║
+║                                          ║
+╠══════════════════════════════════════════╣
+║  hydra | 1:main | 2:feature    ^B,N:new ║
+╠══════════════════════════════════════════╣
+```
+
+Content that scrolls off the top of xterm's viewport is printed into the scroll region, entering the terminal's native scrollback buffer. The current viewport is overwritten in-place each frame.
 
 ```
 src/
-├── cli.tsx              # Entry point
-├── app.tsx              # Root component
-├── components/          # UI (tab bar, terminal pane, status bar, dialogs)
-├── hooks/               # Input routing, session management, rendering
-├── services/            # PTY, terminal emulation, worktree management, cleanup
-├── state/               # Reducer-based state management
-└── utils/               # ANSI helpers, Git operations, constants
+├── cli.ts               # Entry point
+├── app.ts               # App controller — wires store, renderer, input, sessions
+├── services/
+│   ├── screen-renderer  # ANSI scroll region rendering engine
+│   ├── input-handler    # Raw stdin with Ctrl+B prefix routing
+│   ├── session-manager  # Session lifecycle (create, close, resize, restore)
+│   ├── buffer-renderer  # xterm buffer → ANSI string conversion
+│   ├── pty-manager      # PTY spawning and management
+│   ├── terminal-emulator # xterm-headless wrapper
+│   ├── worktree-manager # Git worktree operations
+│   └── cleanup          # Signal handlers and session teardown
+├── state/
+│   ├── session-store    # EventEmitter-based store with dispatch/subscribe
+│   └── types            # Session, AppState, AppAction types
+└── utils/
+    ├── ansi             # SGR, cursor positioning, scroll regions
+    ├── constants        # Paths, timeouts, chrome dimensions
+    └── git              # Git operations (repo root, branches)
 ```
 
 Worktrees are stored in `~/.hydra/worktrees/<repo>/<branch>/`.

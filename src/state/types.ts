@@ -16,7 +16,6 @@ export interface AppState {
   sessions: Session[];
   activeSessionId: string | null;
   mode: AppMode;
-  scrollOffset: number;
 }
 
 export type AppAction =
@@ -27,7 +26,4 @@ export type AppAction =
   | { type: "PREV_TAB" }
   | { type: "JUMP_TO_TAB"; index: number }
   | { type: "SET_MODE"; mode: AppMode }
-  | { type: "SESSION_EXITED"; sessionId: string; exitCode: number }
-  | { type: "SCROLL_UP"; lines: number }
-  | { type: "SCROLL_DOWN"; lines: number }
-  | { type: "RESET_SCROLL" };
+  | { type: "SESSION_EXITED"; sessionId: string; exitCode: number };

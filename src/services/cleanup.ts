@@ -1,6 +1,8 @@
 import type { Session } from "../state/types.js";
 import { killPty } from "./pty-manager.js";
 import { disposeTerminal } from "./terminal-emulator.js";
+import { resetScrollRegion, SHOW_CURSOR } from "../utils/ansi.js";
+
 /**
  * Clean up all active sessions: kill PTYs and dispose terminals.
  * Worktrees are intentionally preserved so they can be restored on next launch.
@@ -43,8 +45,8 @@ export function installSignalHandlers(
     }
 
     // Restore terminal
-    process.stdout.write("\x1b[?25h"); // show cursor
-    process.stdout.write("\x1b[?1049l"); // leave alt screen
+    process.stdout.write(SHOW_CURSOR);
+    process.stdout.write(resetScrollRegion());
 
     onExit();
     process.exit(0);
