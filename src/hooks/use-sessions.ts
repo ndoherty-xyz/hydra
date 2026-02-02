@@ -37,9 +37,28 @@ export function useSessions(
       const sessionId = generateSessionId();
 
       // 4. Wire pty output → xterm terminal
+      // Buffer PTY data with a short debounce so that a complete Ink frame
+      // (clear + content) is written to xterm atomically.  Without this,
+      // the kernel PTY buffer can split a single write across multiple reads,
+      // and the renderer may capture a transient cleared state.
+      const pendingChunks: string[] = [];
+      let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const flushPtyData = () => {
+        flushTimer = null;
+        const batch = pendingChunks.join("");
+        pendingChunks.length = 0;
+        terminal.write(batch, () => {
+          onPtyDataRef.current?.(sessionId);
+        });
+      };
+
       proc.onData((data) => {
-        terminal.write(data);
-        onPtyDataRef.current?.(sessionId);
+        pendingChunks.push(data);
+        if (flushTimer !== null) {
+          clearTimeout(flushTimer);
+        }
+        flushTimer = setTimeout(flushPtyData, 8);
       });
 
       // 5. Handle pty exit

@@ -17,10 +17,7 @@ import { installSignalHandlers } from "./services/cleanup.js";
 
 // Tab bar = 1 row, status bar = 1 row, border top/bottom = 2 rows
 const CHROME_ROWS = 4;
-// The border box eats 2 rows and 2 cols (top/bottom/left/right lines),
-// so the inner content area is smaller than the outer box.
-const BORDER_ROWS = 2;
-const BORDER_COLS = 2;
+const CHROME_COLS = 2; // border left + border right
 
 interface AppInnerProps {
   repoRoot: string;
@@ -31,16 +28,16 @@ function AppInner({ repoRoot }: AppInnerProps) {
   const { exit } = useApp();
 
   const [innerRows, setInnerRows] = useState(
-    Math.max(1, process.stdout.rows - CHROME_ROWS - BORDER_ROWS),
+    Math.max(1, process.stdout.rows - CHROME_ROWS),
   );
   const [innerCols, setInnerCols] = useState(
-    Math.max(1, process.stdout.columns - BORDER_COLS),
+    Math.max(1, process.stdout.columns - CHROME_COLS),
   );
 
   useEffect(() => {
     const onResize = () => {
-      setInnerRows(Math.max(1, process.stdout.rows - CHROME_ROWS - BORDER_ROWS));
-      setInnerCols(Math.max(1, process.stdout.columns - BORDER_COLS));
+      setInnerRows(Math.max(1, process.stdout.rows - CHROME_ROWS));
+      setInnerCols(Math.max(1, process.stdout.columns - CHROME_COLS));
     };
     process.stdout.on("resize", onResize);
     return () => {

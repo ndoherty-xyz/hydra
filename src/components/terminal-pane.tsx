@@ -8,7 +8,11 @@ interface TerminalLineProps {
 }
 
 const TerminalLine = memo(function TerminalLine({ content }: TerminalLineProps) {
-  return <Text>{content}</Text>;
+  return (
+    <Box height={1} overflow="hidden">
+      <Text>{content}</Text>
+    </Box>
+  );
 });
 
 interface TerminalPaneProps {
@@ -32,14 +36,8 @@ export function TerminalPane({ notifyDirtyRef, visibleRows, activeSession, scrol
     );
   }
 
-  const buf = activeSession.terminal.buffer.active;
-  const nonEmpty = lines.filter(l => l.replace(/\x1b\[[^m]*m/g, '').trim().length > 0).length;
-
   return (
     <Box flexGrow={1} flexDirection="column" overflow="hidden">
-      <Text color="yellow" dimColor>
-        {`[dbg] baseY=${buf.baseY} cursorY=${buf.cursorY} bufLen=${buf.length} rows=${activeSession.terminal.rows} lines=${lines.length} nonEmpty=${nonEmpty} scroll=${scrollOffset}`}
-      </Text>
       {lines.map((line, i) => (
         <TerminalLine key={i} content={line} />
       ))}

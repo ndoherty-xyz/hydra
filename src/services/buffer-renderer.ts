@@ -101,7 +101,7 @@ function renderLine(line: IBufferLine, cols: number, cell: IBufferCell): string 
     segments.push(ch);
   }
 
-  if (!hasContent) return "";
+  if (!hasContent) return " ";
 
   segments.push(RESET);
   return segments.join("");
@@ -127,7 +127,7 @@ export function renderBuffer(
 
   // Reuse a single cell object to avoid allocation per cell
   const cell = terminal.buffer.active.getNullCell();
-  const rows = Math.min(visibleRows, terminal.rows);
+  const rows = visibleRows;
 
   for (let i = 0; i < rows; i++) {
     const y = startLine + i;
@@ -136,10 +136,10 @@ export function renderBuffer(
       if (line) {
         lines.push(renderLine(line, terminal.cols, cell));
       } else {
-        lines.push("");
+        lines.push(" ");
       }
     } else {
-      lines.push("");
+      lines.push(" ");
     }
   }
 
