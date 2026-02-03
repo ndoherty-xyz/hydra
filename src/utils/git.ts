@@ -32,3 +32,21 @@ export async function getCurrentBranch(repoRoot: string): Promise<string> {
   const result = await git.branchLocal();
   return result.current;
 }
+
+export async function gitAddAll(cwd: string): Promise<void> {
+  const git = simpleGit(cwd);
+  await git.add("-A");
+}
+
+export async function gitCommit(cwd: string, message: string): Promise<string> {
+  const git = simpleGit(cwd);
+  const result = await git.commit(message);
+  const summary = result.summary;
+  return `${summary.changes} changed, ${summary.insertions} insertions, ${summary.deletions} deletions`;
+}
+
+export async function gitPush(cwd: string): Promise<void> {
+  const git = simpleGit(cwd);
+  const branch = await getCurrentBranch(cwd);
+  await git.push(["-u", "origin", branch]);
+}

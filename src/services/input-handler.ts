@@ -9,6 +9,10 @@ export interface InputHandlerCallbacks {
   onSessionCreatorInput: (data: string) => void;
   onConfirmDialogInput: (data: string) => void;
   onSubmit: (sessionId: string) => void;
+  onGitOperations: () => void;
+  onGitSelectInput: (data: string) => void;
+  onGitMessageInput: (data: string) => void;
+  onGitResultInput: (data: string) => void;
 }
 
 export class InputHandler {
@@ -72,6 +76,25 @@ export class InputHandler {
       return;
     }
 
+    if (state.mode === "git-select") {
+      this.callbacks.onGitSelectInput(str);
+      return;
+    }
+
+    if (state.mode === "git-message") {
+      this.callbacks.onGitMessageInput(str);
+      return;
+    }
+
+    if (state.mode === "git-running") {
+      return;
+    }
+
+    if (state.mode === "git-result") {
+      this.callbacks.onGitResultInput(str);
+      return;
+    }
+
     // Check for prefix key (Ctrl+B)
     if (str === CTRL_B && !this.prefixActive) {
       this.prefixActive = true;
@@ -127,6 +150,11 @@ export class InputHandler {
 
     if (key === "w" || key === "W") {
       this.callbacks.onCloseSession();
+      return;
+    }
+
+    if (key === "g" || key === "G") {
+      this.callbacks.onGitOperations();
       return;
     }
 
