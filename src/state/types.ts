@@ -12,6 +12,8 @@ export interface Session {
 
 export type AppMode = "normal" | "creating-session" | "confirming-close";
 
+export type SessionStatus = "idle" | "working" | "waiting";
+
 export interface AppState {
   sessions: Session[];
   activeSessionId: string | null;

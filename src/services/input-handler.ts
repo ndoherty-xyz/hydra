@@ -8,6 +8,7 @@ export interface InputHandlerCallbacks {
   onQuit: () => void;
   onSessionCreatorInput: (data: string) => void;
   onConfirmDialogInput: (data: string) => void;
+  onSubmit: (sessionId: string) => void;
 }
 
 export class InputHandler {
@@ -107,6 +108,9 @@ export class InputHandler {
     const activeSession = this.getActiveSession();
     if (activeSession && activeSession.exitCode === null) {
       activeSession.pty.write(str);
+      if (str === "\r") {
+        this.callbacks.onSubmit(activeSession.id);
+      }
     }
   }
 

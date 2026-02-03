@@ -3,7 +3,15 @@ import { ScreenRenderer } from "./services/screen-renderer.js";
 import { InputHandler } from "./services/input-handler.js";
 import { SessionManager } from "./services/session-manager.js";
 import { installSignalHandlers, cleanupAllSessions } from "./services/cleanup.js";
-import type { AppMode } from "./state/types.js";
+import type { AppMode, SessionStatus } from "./state/types.js";
+
+// How long PTY output must be silent before transitioning to "waiting".
+const SILENCE_MS = 3000;
+
+interface StatusEntry {
+  status: SessionStatus;
+  silenceTimer: ReturnType<typeof setTimeout> | null;
+}
 
 export class HydraApp {
   private store: AppStore;
@@ -23,6 +31,9 @@ export class HydraApp {
   private lastRenderedSessionId: string | null = null;
   private lastMode: AppMode = "normal";
 
+  // Per-session status tracking
+  private sessionStatuses = new Map<string, StatusEntry>();
+
   constructor(repoRoot: string) {
     this.repoRoot = repoRoot;
     this.store = new AppStore();
@@ -35,10 +46,14 @@ export class HydraApp {
       onQuit: () => this.onQuit(),
       onSessionCreatorInput: (data) => this.onSessionCreatorInput(data),
       onConfirmDialogInput: (data) => this.onConfirmDialogInput(data),
+      onSubmit: (sessionId) => this.setSessionStatus(sessionId, "working"),
     });
 
-    // Wire raw PTY passthrough
+    // Status detection via PTY silence. Any PTY data resets a timer;
+    // when output stops for SILENCE_MS, transition to "waiting".
     this.sessionManager.onRawPtyData = (sessionId, data) => {
+      this.resetSilenceTimer(sessionId);
+
       const state = this.store.getState();
       if (sessionId === state.activeSessionId && state.mode === "normal") {
         this.renderer.writePassthrough(data);
@@ -95,7 +110,56 @@ export class HydraApp {
     });
   }
 
+  private setSessionStatus(sessionId: string, status: SessionStatus): void {
+    const entry = this.sessionStatuses.get(sessionId);
+    if (entry?.status === status) return;
+
+    this.sessionStatuses.set(sessionId, {
+      status,
+      silenceTimer: entry?.silenceTimer ?? null,
+    });
+    this.renderer.setSessionStatuses(this.sessionStatuses);
+    this.renderer.requestChromeRedraw();
+  }
+
+  /** Reset the silence timer for a session. Only fires "waiting" if currently "working". */
+  private resetSilenceTimer(sessionId: string): void {
+    const entry = this.sessionStatuses.get(sessionId);
+    if (!entry) return;
+
+    if (entry.silenceTimer) clearTimeout(entry.silenceTimer);
+    entry.silenceTimer = setTimeout(() => {
+      entry.silenceTimer = null;
+      if (entry.status === "working") {
+        this.setSessionStatus(sessionId, "waiting");
+      }
+    }, SILENCE_MS);
+  }
+
+  /** Ensure every session has a status entry; remove stale entries. */
+  private syncSessionStatuses(): void {
+    const state = this.store.getState();
+    const currentIds = new Set(state.sessions.map((s) => s.id));
+
+    for (const session of state.sessions) {
+      if (!this.sessionStatuses.has(session.id)) {
+        this.sessionStatuses.set(session.id, { status: "idle", silenceTimer: null });
+      }
+    }
+
+    for (const [id, entry] of this.sessionStatuses) {
+      if (!currentIds.has(id)) {
+        if (entry.silenceTimer) clearTimeout(entry.silenceTimer);
+        this.sessionStatuses.delete(id);
+      }
+    }
+
+    this.renderer.setSessionStatuses(this.sessionStatuses);
+  }
+
   private render(): void {
+    this.syncSessionStatuses();
+
     const state = this.store.getState();
     const activeSession = state.sessions.find(
       (s) => s.id === state.activeSessionId,
