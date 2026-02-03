@@ -172,10 +172,10 @@ export class ScreenRenderer {
    * Blocks passthrough and takes over the viewport.
    */
   enterModal(
-    type: "session-creator" | "confirm-close",
+    type: "session-creator" | "confirm-close" | "git-select" | "git-message" | "git-running" | "git-result",
     value: string,
     state: AppState,
-    session?: Session,
+    options?: { session?: Session; gitChoice?: number; isError?: boolean },
   ): void {
     this.isModalActive = true;
     this.updateState(state);
@@ -195,12 +195,54 @@ export class ScreenRenderer {
         sgr(90) + "Enter to create, Esc to cancel" + RESET,
       ];
       this.renderCenteredLines(lines);
-    } else if (type === "confirm-close" && session) {
-      const msg = `Close session "${session.branch}"? This will remove the worktree.`;
+    } else if (type === "confirm-close" && options?.session) {
+      const msg = `Close session "${options.session.branch}"? This will remove the worktree.`;
       const lines = [
         sgr(1, 33) + "Confirm" + RESET,
         msg,
         sgr(90) + "y/n" + RESET,
+      ];
+      this.renderCenteredLines(lines);
+    } else if (type === "git-select") {
+      const lines = [
+        sgr(1, 35) + "Git Operations" + RESET,
+        "",
+        sgr(36) + "1" + RESET + "  Commit",
+        sgr(36) + "2" + RESET + "  Commit & Push",
+        sgr(36) + "3" + RESET + "  Deliver (commit, push, close session)",
+        "",
+        sgr(90) + "Press 1/2/3, Esc to cancel" + RESET,
+      ];
+      this.renderCenteredLines(lines);
+    } else if (type === "git-message") {
+      const choiceLabels = ["Commit", "Commit & Push", "Deliver"];
+      const label = choiceLabels[(options?.gitChoice ?? 1) - 1] ?? "Commit";
+      const lines = [
+        sgr(1, 35) + label + RESET,
+        "",
+        "Commit message: " + sgr(36) + value + RESET + sgr(90) + "|" + RESET,
+        "",
+        sgr(90) + "Enter to confirm, Esc to go back" + RESET,
+      ];
+      this.renderCenteredLines(lines);
+    } else if (type === "git-running") {
+      const lines = [
+        sgr(1, 33) + "Running..." + RESET,
+        "",
+        sgr(36) + value + RESET,
+      ];
+      this.renderCenteredLines(lines);
+    } else if (type === "git-result") {
+      const isError = options?.isError ?? false;
+      const title = isError
+        ? sgr(1, 31) + "Error" + RESET
+        : sgr(1, 32) + "Success" + RESET;
+      const lines = [
+        title,
+        "",
+        value,
+        "",
+        sgr(90) + "Press any key to dismiss" + RESET,
       ];
       this.renderCenteredLines(lines);
     }
@@ -282,6 +324,8 @@ export class ScreenRenderer {
       left.push(sgr(33) + "[CREATE] " + RESET);
     } else if (state.mode === "confirming-close") {
       left.push(sgr(33) + "[CLOSE?] " + RESET);
+    } else if (state.mode.startsWith("git-")) {
+      left.push(sgr(35) + "[GIT] " + RESET);
     }
 
     // Tabs
@@ -327,7 +371,7 @@ export class ScreenRenderer {
     }
 
     // Right side: keybindings in plain gray
-    const rightHelp = "^B,N:new  ^B,W:close  ^B,[/]:tabs  ^B,Q:quit ";
+    const rightHelp = "^B,G:git  ^B,N:new  ^B,W:close  ^B,[/]:tabs  ^B,Q:quit ";
     const rightStr = sgr(90) + rightHelp + RESET;
 
     const leftStr = left.join("");

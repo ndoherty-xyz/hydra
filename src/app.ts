@@ -4,6 +4,7 @@ import { InputHandler } from "./services/input-handler.js";
 import { SessionManager } from "./services/session-manager.js";
 import { installSignalHandlers, cleanupAllSessions } from "./services/cleanup.js";
 import type { AppMode, SessionStatus } from "./state/types.js";
+import { gitAddAll, gitCommit, gitPush } from "./utils/git.js";
 
 // How long PTY output must be silent before transitioning to "waiting".
 const SILENCE_MS = 3000;
@@ -27,6 +28,14 @@ export class HydraApp {
   private sessionCreatorValue = "";
   private error: string | null = null;
 
+  // Git modal state
+  private gitChoice: 1 | 2 | 3 = 1;
+  private gitCommitMessage = "";
+  private gitProgressMessage = "";
+  private gitResultMessage = "";
+  private gitResultIsError = false;
+  private gitTargetSessionId: string | null = null;
+
   // Rendering state tracking
   private lastRenderedSessionId: string | null = null;
   private lastMode: AppMode = "normal";
@@ -47,6 +56,10 @@ export class HydraApp {
       onSessionCreatorInput: (data) => this.onSessionCreatorInput(data),
       onConfirmDialogInput: (data) => this.onConfirmDialogInput(data),
       onSubmit: (sessionId) => this.setSessionStatus(sessionId, "working"),
+      onGitOperations: () => this.onGitOperations(),
+      onGitSelectInput: (data) => this.onGitSelectInput(data),
+      onGitMessageInput: (data) => this.onGitMessageInput(data),
+      onGitResultInput: (data) => this.onGitResultInput(data),
     });
 
     // Status detection via PTY silence. Any PTY data resets a timer;
@@ -177,7 +190,31 @@ export class HydraApp {
     }
 
     if (state.mode === "confirming-close") {
-      this.renderer.enterModal("confirm-close", "", state, activeSession);
+      this.renderer.enterModal("confirm-close", "", state, { session: activeSession });
+      this.lastMode = state.mode;
+      return;
+    }
+
+    if (state.mode === "git-select") {
+      this.renderer.enterModal("git-select", "", state);
+      this.lastMode = state.mode;
+      return;
+    }
+
+    if (state.mode === "git-message") {
+      this.renderer.enterModal("git-message", this.gitCommitMessage, state, { gitChoice: this.gitChoice });
+      this.lastMode = state.mode;
+      return;
+    }
+
+    if (state.mode === "git-running") {
+      this.renderer.enterModal("git-running", this.gitProgressMessage, state);
+      this.lastMode = state.mode;
+      return;
+    }
+
+    if (state.mode === "git-result") {
+      this.renderer.enterModal("git-result", this.gitResultMessage, state, { isError: this.gitResultIsError });
       this.lastMode = state.mode;
       return;
     }
@@ -319,6 +356,117 @@ export class HydraApp {
     if (data === "n" || data === "N" || data.startsWith("\x1b")) {
       this.store.dispatch({ type: "SET_MODE", mode: "normal" });
     }
+  }
+
+  private onGitOperations(): void {
+    const state = this.store.getState();
+    if (!state.activeSessionId) return;
+    this.gitTargetSessionId = state.activeSessionId;
+    this.gitChoice = 1;
+    this.gitCommitMessage = "";
+    this.gitProgressMessage = "";
+    this.gitResultMessage = "";
+    this.gitResultIsError = false;
+    this.store.dispatch({ type: "SET_MODE", mode: "git-select" });
+  }
+
+  private onGitSelectInput(data: string): void {
+    if (data.startsWith("\x1b")) {
+      this.store.dispatch({ type: "SET_MODE", mode: "normal" });
+      return;
+    }
+
+    if (data === "1" || data === "2" || data === "3") {
+      this.gitChoice = parseInt(data, 10) as 1 | 2 | 3;
+      this.gitCommitMessage = "";
+      this.store.dispatch({ type: "SET_MODE", mode: "git-message" });
+    }
+  }
+
+  private onGitMessageInput(data: string): void {
+    if (data.startsWith("\x1b")) {
+      this.store.dispatch({ type: "SET_MODE", mode: "git-select" });
+      return;
+    }
+
+    if (data === "\r" || data === "\n") {
+      const trimmed = this.gitCommitMessage.trim();
+      if (trimmed.length > 0) {
+        this.executeGitOperations(trimmed);
+      }
+      return;
+    }
+
+    if (data === "\x7f" || data === "\b") {
+      this.gitCommitMessage = this.gitCommitMessage.slice(0, -1);
+      this.render();
+      return;
+    }
+
+    if (data.length === 1 && data.charCodeAt(0) >= 32) {
+      this.gitCommitMessage += data;
+      this.render();
+    }
+  }
+
+  private async executeGitOperations(message: string): Promise<void> {
+    const session = this.store.getState().sessions.find(
+      (s) => s.id === this.gitTargetSessionId,
+    );
+    if (!session) {
+      this.gitResultMessage = "Session no longer exists.";
+      this.gitResultIsError = true;
+      this.store.dispatch({ type: "SET_MODE", mode: "git-result" });
+      return;
+    }
+
+    const cwd = session.worktreePath;
+    this.store.dispatch({ type: "SET_MODE", mode: "git-running" });
+
+    try {
+      this.gitProgressMessage = "Adding files...";
+      this.render();
+      await gitAddAll(cwd);
+
+      this.gitProgressMessage = "Committing...";
+      this.render();
+      const commitSummary = await gitCommit(cwd, message);
+
+      if (this.gitChoice >= 2) {
+        this.gitProgressMessage = "Pushing...";
+        this.render();
+        await gitPush(cwd);
+      }
+
+      const choiceLabels = ["Committed", "Committed & pushed", "Delivered"];
+      this.gitResultMessage = `${choiceLabels[this.gitChoice - 1]}: ${commitSummary}`;
+      this.gitResultIsError = false;
+      this.store.dispatch({ type: "SET_MODE", mode: "git-result" });
+
+      if (this.gitChoice === 3) {
+        setTimeout(async () => {
+          const currentSession = this.store.getState().sessions.find(
+            (s) => s.id === this.gitTargetSessionId,
+          );
+          if (currentSession) {
+            this.store.dispatch({ type: "SET_MODE", mode: "normal" });
+            await this.sessionManager.closeSession(currentSession);
+          }
+        }, 1500);
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.gitResultMessage = errMsg;
+      this.gitResultIsError = true;
+      this.store.dispatch({ type: "SET_MODE", mode: "git-result" });
+    }
+  }
+
+  private onGitResultInput(_data: string): void {
+    if (this.gitChoice === 3 && !this.gitResultIsError) {
+      return;
+    }
+    this.store.dispatch({ type: "SET_MODE", mode: "normal" });
   }
 
   private async onQuit(): Promise<void> {
