@@ -30,6 +30,7 @@ export function clearLine(): string {
 // Hide/show cursor
 export const HIDE_CURSOR = "\x1b[?25l";
 export const SHOW_CURSOR = "\x1b[?25h";
+export const DISABLE_FOCUS_REPORTING = "\x1b[?1004l";
 
 // Cursor save/restore (DECSC / DECRC)
 export const SAVE_CURSOR = "\x1b7";
