@@ -36,6 +36,21 @@ pnpm run build
 pnpm run start
 ```
 
+### Global install
+
+To make `hydra` available as a command from any Git repository:
+
+```sh
+pnpm run build
+pnpm link --global
+```
+
+Then from any repo:
+
+```sh
+hydra
+```
+
 ## Keybindings
 
 All commands use a **Ctrl+B** prefix (like tmux):
@@ -64,7 +79,7 @@ Uses ANSI scroll regions for rendering — no React or Ink. The terminal is spli
 ╠══════════════════════════════════════════╣
 ```
 
-Content that scrolls off the top of xterm's viewport is printed into the scroll region, entering the terminal's native scrollback buffer. The current viewport is overwritten in-place each frame.
+Raw PTY output is written directly to stdout within the scroll region (passthrough rendering). Escape sequences that would interfere with the layout (alternate screen, scroll region overrides, Kitty keyboard protocol) are filtered. Full viewport repaints from the xterm buffer only happen on session switches and modal exits.
 
 ```
 src/
