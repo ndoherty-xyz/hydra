@@ -89,6 +89,14 @@ export class InputHandler {
 
     // Handle prefix commands
     if (this.prefixActive) {
+      // Terminal response sequences start with ESC — don't let them consume the prefix
+      if (str.startsWith("\x1b")) {
+        const activeSession = this.getActiveSession();
+        if (activeSession && activeSession.exitCode === null) {
+          activeSession.pty.write(str);
+        }
+        return;
+      }
       this.prefixActive = false;
       this.clearPrefixTimeout();
       this.handlePrefixCommand(str);

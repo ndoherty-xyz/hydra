@@ -31,6 +31,10 @@ export function clearLine(): string {
 export const HIDE_CURSOR = "\x1b[?25l";
 export const SHOW_CURSOR = "\x1b[?25h";
 
+// Cursor save/restore (DECSC / DECRC)
+export const SAVE_CURSOR = "\x1b7";
+export const RESTORE_CURSOR = "\x1b8";
+
 // Clear screen
 export const CLEAR_SCREEN = `${ESC}2J${ESC}H`;
 
