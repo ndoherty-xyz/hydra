@@ -106,6 +106,10 @@ export class InputHandler {
       return;
     }
 
+    if (state.mode === "workspace-creating") {
+      return;
+    }
+
     // Check for prefix key (Ctrl+B)
     if (str === CTRL_B && !this.prefixActive) {
       this.prefixActive = true;
