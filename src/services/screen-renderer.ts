@@ -172,7 +172,7 @@ export class ScreenRenderer {
    * Blocks passthrough and takes over the viewport.
    */
   enterModal(
-    type: "session-creator" | "confirm-close" | "git-select" | "git-message" | "git-running" | "git-result",
+    type: "session-creator" | "confirm-close" | "git-select" | "git-message" | "git-running" | "git-result" | "sync-running" | "sync-result",
     value: string,
     state: AppState,
     options?: { session?: Session; gitChoice?: number; isError?: boolean },
@@ -196,11 +196,13 @@ export class ScreenRenderer {
       ];
       this.renderCenteredLines(lines);
     } else if (type === "confirm-close" && options?.session) {
-      const msg = `Close session "${options.session.branch}"? This will remove the worktree.`;
       const lines = [
-        sgr(1, 33) + "Confirm" + RESET,
-        msg,
-        sgr(90) + "y/n" + RESET,
+        sgr(1, 33) + `Close "${options.session.branch}"?` + RESET,
+        "",
+        sgr(36) + "p" + RESET + "  Push and close",
+        sgr(36) + "d" + RESET + "  Discard and close",
+        "",
+        sgr(90) + "Esc to cancel" + RESET,
       ];
       this.renderCenteredLines(lines);
     } else if (type === "git-select") {
@@ -237,6 +239,26 @@ export class ScreenRenderer {
       const title = isError
         ? sgr(1, 31) + "Error" + RESET
         : sgr(1, 32) + "Success" + RESET;
+      const lines = [
+        title,
+        "",
+        value,
+        "",
+        sgr(90) + "Press any key to dismiss" + RESET,
+      ];
+      this.renderCenteredLines(lines);
+    } else if (type === "sync-running") {
+      const lines = [
+        sgr(1, 33) + "Syncing..." + RESET,
+        "",
+        sgr(36) + value + RESET,
+      ];
+      this.renderCenteredLines(lines);
+    } else if (type === "sync-result") {
+      const isError = options?.isError ?? false;
+      const title = isError
+        ? sgr(1, 31) + "Sync Error" + RESET
+        : sgr(1, 32) + "Synced" + RESET;
       const lines = [
         title,
         "",
@@ -343,6 +365,8 @@ export class ScreenRenderer {
       left.push(sgr(33) + "[CLOSE?] " + RESET);
     } else if (state.mode.startsWith("git-")) {
       left.push(sgr(35) + "[GIT] " + RESET);
+    } else if (state.mode.startsWith("sync-")) {
+      left.push(sgr(33) + "[SYNC] " + RESET);
     }
 
     // Tabs
@@ -388,7 +412,7 @@ export class ScreenRenderer {
     }
 
     // Right side: keybindings in plain gray
-    const rightHelp = "^B,G:git  ^B,N:new  ^B,W:close  ^B,[/]:tabs  ^B,Q:quit ";
+    const rightHelp = "^B,G:git  ^B,S:sync  ^B,N:new  ^B,W:close  ^B,[/]:tabs  ^B,Q:quit ";
     const rightStr = sgr(90) + rightHelp + RESET;
 
     const leftStr = left.join("");

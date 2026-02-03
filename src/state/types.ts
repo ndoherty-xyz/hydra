@@ -4,13 +4,13 @@ import type { IPty } from "node-pty";
 export interface Session {
   id: string;
   branch: string;
-  worktreePath: string;
+  workspacePath: string;
   terminal: Terminal;
   pty: IPty;
   exitCode: number | null;
 }
 
-export type AppMode = "normal" | "creating-session" | "confirming-close" | "git-select" | "git-message" | "git-running" | "git-result";
+export type AppMode = "normal" | "creating-session" | "confirming-close" | "git-select" | "git-message" | "git-running" | "git-result" | "sync-running" | "sync-result";
 
 export type SessionStatus = "idle" | "working" | "waiting";
 

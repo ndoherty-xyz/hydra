@@ -1,6 +1,6 @@
 import { createTerminal, resizeTerminal, disposeTerminal } from "./terminal-emulator.js";
 import { spawnClaude, resizePty, killPty } from "./pty-manager.js";
-import { WorktreeManager } from "./worktree-manager.js";
+import { WorkspaceManager } from "./workspace-manager.js";
 import type { AppStore } from "../state/session-store.js";
 import type { Session } from "../state/types.js";
 
@@ -12,7 +12,7 @@ function generateSessionId(): string {
 
 export class SessionManager {
   private store: AppStore;
-  private worktreeManager: WorktreeManager;
+  private workspaceManager: WorkspaceManager;
   private repoRoot: string;
   onPtyData: ((sessionId: string) => void) | null = null;
   onRawPtyData: ((sessionId: string, data: string) => void) | null = null;
@@ -20,20 +20,20 @@ export class SessionManager {
   constructor(store: AppStore, repoRoot: string) {
     this.store = store;
     this.repoRoot = repoRoot;
-    this.worktreeManager = new WorktreeManager(repoRoot);
+    this.workspaceManager = new WorkspaceManager(repoRoot);
   }
 
   async createSession(
     branch: string,
     cols: number,
     rows: number,
-    existingWorktreePath?: string,
+    existingWorkspacePath?: string,
   ): Promise<void> {
-    const worktreePath =
-      existingWorktreePath ?? (await this.worktreeManager.addWorktree(branch));
+    const workspacePath =
+      existingWorkspacePath ?? (await this.workspaceManager.createWorkspace(branch));
 
     const terminal = createTerminal(cols, rows);
-    const proc = spawnClaude(worktreePath, cols, rows);
+    const proc = spawnClaude(workspacePath, cols, rows);
     const sessionId = generateSessionId();
 
     // Buffer PTY data with a short debounce so that a complete frame
@@ -69,7 +69,7 @@ export class SessionManager {
     const session: Session = {
       id: sessionId,
       branch,
-      worktreePath,
+      workspacePath,
       terminal,
       pty: proc,
       exitCode: null,
@@ -83,12 +83,16 @@ export class SessionManager {
     disposeTerminal(session.terminal);
 
     try {
-      await this.worktreeManager.removeWorktree(session.worktreePath);
+      await this.workspaceManager.removeWorkspace(session.workspacePath);
     } catch {
-      // Worktree removal might fail; that's okay
+      // Workspace removal might fail; that's okay
     }
 
     this.store.dispatch({ type: "REMOVE_SESSION", sessionId: session.id });
+  }
+
+  async syncToOrigin(workspacePath: string, branch: string): Promise<void> {
+    await this.workspaceManager.syncToOrigin(workspacePath, branch);
   }
 
   resizeAllSessions(sessions: Session[], newCols: number, newRows: number): void {
@@ -101,13 +105,13 @@ export class SessionManager {
   }
 
   async cleanupOrphans(): Promise<void> {
-    await this.worktreeManager.cleanupOrphans();
+    await this.workspaceManager.cleanupOrphans();
   }
 
   async restoreExistingSessions(cols: number, rows: number): Promise<void> {
-    const worktrees = await this.worktreeManager.listWorktrees();
-    for (const wt of worktrees) {
-      await this.createSession(wt.branch, cols, rows, wt.path);
+    const workspaces = await this.workspaceManager.listWorkspaces();
+    for (const ws of workspaces) {
+      await this.createSession(ws.branch, cols, rows, ws.path);
     }
   }
 }

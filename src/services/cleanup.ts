@@ -5,7 +5,7 @@ import { resetScrollRegion, SHOW_CURSOR, DISABLE_FOCUS_REPORTING } from "../util
 
 /**
  * Clean up all active sessions: kill PTYs and dispose terminals.
- * Worktrees are intentionally preserved so they can be restored on next launch.
+ * Workspaces are intentionally preserved so they can be restored on next launch.
  */
 export async function cleanupAllSessions(
   sessions: Session[],
