@@ -1,10 +1,10 @@
 # Hydra
 
-A terminal multiplexer for Claude Code. Run multiple Claude sessions side-by-side, each in its own Git worktree, with tmux-style keybindings.
+A terminal multiplexer for Claude Code. Run multiple Claude sessions side-by-side, each in its own workspace, with tmux-style keybindings.
 
 ## What it does
 
-Hydra lets you work on multiple branches of a repo simultaneously. Each session gets its own isolated Git worktree with a dedicated Claude Code instance. Sessions persist across restarts — close and reopen Hydra and your worktrees are still there.
+Hydra lets you work on multiple branches of a repo simultaneously. Each session gets its own isolated workspace (a full copy of your repo, including node_modules and .env) with a dedicated Claude Code instance. Sessions persist across restarts — close and reopen Hydra and your workspaces are still there.
 
 Output streams into your terminal's native scrollback buffer, so you can scroll back through history with your mouse wheel or scrollbar — no virtual scrolling needed.
 
@@ -58,7 +58,8 @@ All commands use a **Ctrl+B** prefix (like tmux):
 | Keys | Action |
 |------|--------|
 | `Ctrl+B`, `N` | New session |
-| `Ctrl+B`, `W` | Close current session |
+| `Ctrl+B`, `W` | Close current session (push or discard) |
+| `Ctrl+B`, `S` | Sync workspace to project |
 | `Ctrl+B`, `]` | Next tab |
 | `Ctrl+B`, `[` | Previous tab |
 | `Ctrl+B`, `1-9` | Jump to tab |
@@ -92,7 +93,7 @@ src/
 │   ├── buffer-renderer  # xterm buffer → ANSI string conversion
 │   ├── pty-manager      # PTY spawning and management
 │   ├── terminal-emulator # xterm-headless wrapper
-│   ├── worktree-manager # Git worktree operations
+│   ├── workspace-manager # Workspace copy/sync operations
 │   └── cleanup          # Signal handlers and session teardown
 ├── state/
 │   ├── session-store    # EventEmitter-based store with dispatch/subscribe
@@ -103,4 +104,4 @@ src/
     └── git              # Git operations (repo root, branches)
 ```
 
-Worktrees are stored in `~/.hydra/worktrees/<repo>/<branch>/`.
+Workspaces are stored in `~/.hydra/workspaces/<repo>/<branch>/`.

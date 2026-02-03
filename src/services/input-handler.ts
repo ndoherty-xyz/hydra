@@ -13,6 +13,8 @@ export interface InputHandlerCallbacks {
   onGitSelectInput: (data: string) => void;
   onGitMessageInput: (data: string) => void;
   onGitResultInput: (data: string) => void;
+  onSync: () => void;
+  onSyncResultInput: (data: string) => void;
 }
 
 export class InputHandler {
@@ -95,6 +97,15 @@ export class InputHandler {
       return;
     }
 
+    if (state.mode === "sync-running") {
+      return;
+    }
+
+    if (state.mode === "sync-result") {
+      this.callbacks.onSyncResultInput(str);
+      return;
+    }
+
     // Check for prefix key (Ctrl+B)
     if (str === CTRL_B && !this.prefixActive) {
       this.prefixActive = true;
@@ -155,6 +166,11 @@ export class InputHandler {
 
     if (key === "g" || key === "G") {
       this.callbacks.onGitOperations();
+      return;
+    }
+
+    if (key === "s" || key === "S") {
+      this.callbacks.onSync();
       return;
     }
 

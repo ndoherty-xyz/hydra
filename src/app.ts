@@ -36,6 +36,11 @@ export class HydraApp {
   private gitResultIsError = false;
   private gitTargetSessionId: string | null = null;
 
+  // Sync modal state
+  private syncProgressMessage = "";
+  private syncResultMessage = "";
+  private syncResultIsError = false;
+
   // Rendering state tracking
   private lastRenderedSessionId: string | null = null;
   private lastMode: AppMode = "normal";
@@ -60,6 +65,8 @@ export class HydraApp {
       onGitSelectInput: (data) => this.onGitSelectInput(data),
       onGitMessageInput: (data) => this.onGitMessageInput(data),
       onGitResultInput: (data) => this.onGitResultInput(data),
+      onSync: () => this.onSync(),
+      onSyncResultInput: (data) => this.onSyncResultInput(data),
     });
 
     // Status detection via PTY silence. Any PTY data resets a timer;
@@ -219,6 +226,18 @@ export class HydraApp {
       return;
     }
 
+    if (state.mode === "sync-running") {
+      this.renderer.enterModal("sync-running", this.syncProgressMessage, state);
+      this.lastMode = state.mode;
+      return;
+    }
+
+    if (state.mode === "sync-result") {
+      this.renderer.enterModal("sync-result", this.syncResultMessage, state, { isError: this.syncResultIsError });
+      this.lastMode = state.mode;
+      return;
+    }
+
     // Modal exit: was in a modal, now back to normal
     if (this.lastMode !== "normal" && state.mode === "normal") {
       this.renderer.updateState(state);
@@ -341,7 +360,26 @@ export class HydraApp {
   }
 
   private async onConfirmDialogInput(data: string): Promise<void> {
-    if (data === "y" || data === "Y") {
+    if (data === "p" || data === "P") {
+      // Push and close
+      const state = this.store.getState();
+      const activeSession = state.sessions.find(
+        (s) => s.id === state.activeSessionId,
+      );
+      if (activeSession) {
+        this.store.dispatch({ type: "SET_MODE", mode: "normal" });
+        try {
+          await gitPush(activeSession.workspacePath);
+        } catch {
+          // Push failed — still close the session
+        }
+        await this.sessionManager.closeSession(activeSession);
+      }
+      return;
+    }
+
+    if (data === "d" || data === "D") {
+      // Discard and close
       const state = this.store.getState();
       const activeSession = state.sessions.find(
         (s) => s.id === state.activeSessionId,
@@ -353,7 +391,7 @@ export class HydraApp {
       return;
     }
 
-    if (data === "n" || data === "N" || data.startsWith("\x1b")) {
+    if (data.startsWith("\x1b")) {
       this.store.dispatch({ type: "SET_MODE", mode: "normal" });
     }
   }
@@ -420,7 +458,7 @@ export class HydraApp {
       return;
     }
 
-    const cwd = session.worktreePath;
+    const cwd = session.workspacePath;
     this.store.dispatch({ type: "SET_MODE", mode: "git-running" });
 
     try {
@@ -466,6 +504,37 @@ export class HydraApp {
     if (this.gitChoice === 3 && !this.gitResultIsError) {
       return;
     }
+    this.store.dispatch({ type: "SET_MODE", mode: "normal" });
+  }
+
+  private async onSync(): Promise<void> {
+    const state = this.store.getState();
+    const activeSession = state.sessions.find(
+      (s) => s.id === state.activeSessionId,
+    );
+    if (!activeSession) return;
+
+    this.syncProgressMessage = "Staging, committing, and pushing...";
+    this.syncResultMessage = "";
+    this.syncResultIsError = false;
+    this.store.dispatch({ type: "SET_MODE", mode: "sync-running" });
+
+    try {
+      await this.sessionManager.syncToOrigin(
+        activeSession.workspacePath,
+        activeSession.branch,
+      );
+      this.syncResultMessage = `Synced to project. Run \`git checkout ${activeSession.branch}\` if needed.`;
+      this.syncResultIsError = false;
+    } catch (err) {
+      this.syncResultMessage = err instanceof Error ? err.message : String(err);
+      this.syncResultIsError = true;
+    }
+
+    this.store.dispatch({ type: "SET_MODE", mode: "sync-result" });
+  }
+
+  private onSyncResultInput(_data: string): void {
     this.store.dispatch({ type: "SET_MODE", mode: "normal" });
   }
 

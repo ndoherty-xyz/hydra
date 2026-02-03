@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Hydra is a terminal multiplexer for Claude Code. It runs multiple Claude CLI sessions side-by-side, each in its own Git worktree, with tmux-style keybindings (Ctrl+B prefix). Sessions persist across restarts via preserved worktrees at `~/.hydra/worktrees/<repo>/<branch>/`.
+Hydra is a terminal multiplexer for Claude Code. It runs multiple Claude CLI sessions side-by-side, each in its own workspace (full repo copy), with tmux-style keybindings (Ctrl+B prefix). Sessions persist across restarts via preserved workspaces at `~/.hydra/workspaces/<repo>/<branch>/`.
 
 ## Commands
 
@@ -40,15 +40,16 @@ Event-driven, layered architecture with no React/Ink. Uses ANSI scroll regions (
 - `services/screen-renderer.ts` — ANSI rendering engine. Manages scroll regions, chrome, viewport diffing.
 - `services/buffer-renderer.ts` — Converts xterm buffer cells to ANSI strings with full SGR styling (16/256/RGB color).
 - `services/input-handler.ts` — Raw stdin processing, prefix key detection, modal input routing.
-- `services/session-manager.ts` — Session lifecycle: create, close, resize, restore from existing worktrees.
+- `services/session-manager.ts` — Session lifecycle: create, close, resize, restore from existing workspaces.
 - `services/pty-manager.ts` — Spawns Claude processes with correct TERM/COLORTERM env vars.
-- `services/worktree-manager.ts` — Git worktree create/list/cleanup via simple-git.
+- `services/workspace-manager.ts` — Workspace copy/sync/cleanup. Uses APFS clones on macOS for instant copies.
 - `state/session-store.ts` — Immutable state store with reducer.
 
 ## Gotchas
 
 - **Escape sequence bundling:** Escape key (`\x1b`) may arrive bundled with the next keystroke in a single stdin chunk. The input handler checks `data.startsWith("\x1b")` to handle this.
-- **Branch names as directory names:** Worktree paths use branch names directly as directory components. Branch names with slashes or special characters are not sanitized.
-- **No worktree cleanup on exit:** Worktrees are intentionally preserved for session restoration. `cleanupOrphans()` runs on startup to prune stale ones.
+- **Branch names as directory names:** Workspace paths use branch names directly as directory components. Branch names with slashes or special characters are not sanitized.
+- **No workspace cleanup on exit:** Workspaces are intentionally preserved for session restoration. `cleanupOrphans()` runs on startup to prune stale ones.
+- **Full repo copies:** Each workspace is a complete copy of the repo (including node_modules, .env, etc). On macOS, APFS clones (`cp -c -R`) make this instant and space-efficient. Changes are synced back via `git push` to the original repo's local refs.
 - **Chrome always redraws:** The tab bar and keybinding hints are redrawn every frame regardless of changes, while the viewport uses memoization.
 - **node-pty beta:** Uses `node-pty@1.2.0-beta.4` — a pre-release version. Native module requires compilation during install.
