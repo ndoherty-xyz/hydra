@@ -12,7 +12,7 @@ import {
 } from "../utils/ansi.js";
 import { CHROME_ROWS } from "../utils/constants.js";
 import { renderBuffer } from "./buffer-renderer.js";
-import type { AppState, Session } from "../state/types.js";
+import type { AppState, Session, SessionStatus } from "../state/types.js";
 
 export class ScreenRenderer {
   private totalRows = 0;
@@ -21,6 +21,7 @@ export class ScreenRenderer {
   private lastKnownState: AppState | null = null;
   private isModalActive = false;
   private chromeNeedsRedraw = false;
+  private sessionStatuses = new Map<string, SessionStatus>();
 
   // Sequences to filter from passthrough
   private static DECSTBM_RE = /\x1b\[\d*;?\d*r/g;
@@ -28,6 +29,12 @@ export class ScreenRenderer {
   private static KITTY_KBD_RE = /\x1b\[>[0-9;]*u/g;
   private static DSR_RE = /\x1b\[6n/g;
   private static DA_RE = /\x1b\[[>=]?c/g;
+
+  setSessionStatuses(statuses: Map<string, { status: SessionStatus }>): void {
+    this.sessionStatuses = new Map(
+      [...statuses].map(([id, entry]) => [id, entry.status]),
+    );
+  }
 
   get cols(): number {
     return this.totalCols;
@@ -281,16 +288,25 @@ export class ScreenRenderer {
         const session = state.sessions[i]!;
         const isActive = session.id === state.activeSessionId;
         const hasExited = session.exitCode !== null;
+        const status = this.sessionStatuses.get(session.id) ?? "idle";
 
-        if (hasExited) {
-          left.push(sgr(31) + ` ${i + 1}:${session.branch} ` + RESET);
-        } else if (isActive) {
-          left.push(
-            sgr(1, 37, 44) + ` ${i + 1}:${session.branch} ` + RESET,
-          ); // bold white on blue
-        } else {
-          left.push(sgr(90) + ` ${i + 1}:${session.branch} ` + RESET);
-        }
+        // Status dot: exited overrides status color
+        const dotColor = hasExited || status === "waiting"
+          ? sgr(31)  // red
+          : status === "working"
+            ? sgr(32)  // green
+            : sgr(90); // gray (idle)
+        const dot = dotColor + "●" + RESET;
+
+        // Tab label
+        const label = ` ${i + 1}:${session.branch} `;
+        const labelStyle = hasExited
+          ? sgr(31)
+          : isActive
+            ? sgr(1, 4, 37) // bold underline white
+            : sgr(90);
+
+        left.push(" " + dot + labelStyle + label + RESET);
 
         if (i < state.sessions.length - 1) {
           left.push(sgr(90) + "|" + RESET);
