@@ -37,6 +37,7 @@ export class HydraApp {
   private gitTargetSessionId: string | null = null;
 
   // Sync modal state
+  private syncCommitMessage = "";
   private syncProgressMessage = "";
   private syncResultMessage = "";
   private syncResultIsError = false;
@@ -66,6 +67,7 @@ export class HydraApp {
       onGitMessageInput: (data) => this.onGitMessageInput(data),
       onGitResultInput: (data) => this.onGitResultInput(data),
       onSync: () => this.onSync(),
+      onSyncMessageInput: (data) => this.onSyncMessageInput(data),
       onSyncResultInput: (data) => this.onSyncResultInput(data),
     });
 
@@ -228,6 +230,12 @@ export class HydraApp {
 
     if (state.mode === "workspace-creating") {
       this.renderer.enterModal("workspace-creating", "Copying repository...", state);
+      this.lastMode = state.mode;
+      return;
+    }
+
+    if (state.mode === "sync-message") {
+      this.renderer.enterModal("sync-message", this.syncCommitMessage, state);
       this.lastMode = state.mode;
       return;
     }
@@ -514,7 +522,43 @@ export class HydraApp {
     this.store.dispatch({ type: "SET_MODE", mode: "normal" });
   }
 
-  private async onSync(): Promise<void> {
+  private onSync(): void {
+    const state = this.store.getState();
+    if (!state.activeSessionId) return;
+    this.syncCommitMessage = "";
+    this.syncProgressMessage = "";
+    this.syncResultMessage = "";
+    this.syncResultIsError = false;
+    this.store.dispatch({ type: "SET_MODE", mode: "sync-message" });
+  }
+
+  private onSyncMessageInput(data: string): void {
+    if (data.startsWith("\x1b")) {
+      this.store.dispatch({ type: "SET_MODE", mode: "normal" });
+      return;
+    }
+
+    if (data === "\r" || data === "\n") {
+      const trimmed = this.syncCommitMessage.trim();
+      if (trimmed.length > 0) {
+        this.executeSyncOperations(trimmed);
+      }
+      return;
+    }
+
+    if (data === "\x7f" || data === "\b") {
+      this.syncCommitMessage = this.syncCommitMessage.slice(0, -1);
+      this.render();
+      return;
+    }
+
+    if (data.length === 1 && data.charCodeAt(0) >= 32) {
+      this.syncCommitMessage += data;
+      this.render();
+    }
+  }
+
+  private async executeSyncOperations(message: string): Promise<void> {
     const state = this.store.getState();
     const activeSession = state.sessions.find(
       (s) => s.id === state.activeSessionId,
@@ -522,14 +566,13 @@ export class HydraApp {
     if (!activeSession) return;
 
     this.syncProgressMessage = "Staging, committing, and pushing...";
-    this.syncResultMessage = "";
-    this.syncResultIsError = false;
     this.store.dispatch({ type: "SET_MODE", mode: "sync-running" });
 
     try {
       await this.sessionManager.syncToOrigin(
         activeSession.workspacePath,
         activeSession.branch,
+        message,
       );
       this.syncResultMessage = `Synced to project. Run \`git checkout ${activeSession.branch}\` if needed.`;
       this.syncResultIsError = false;

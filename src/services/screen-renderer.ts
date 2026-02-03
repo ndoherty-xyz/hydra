@@ -210,7 +210,7 @@ export class ScreenRenderer {
    * Blocks passthrough and takes over the viewport.
    */
   enterModal(
-    type: "session-creator" | "confirm-close" | "git-select" | "git-message" | "git-running" | "git-result" | "sync-running" | "sync-result" | "workspace-creating",
+    type: "session-creator" | "confirm-close" | "git-select" | "git-message" | "git-running" | "git-result" | "sync-message" | "sync-running" | "sync-result" | "workspace-creating",
     value: string,
     state: AppState,
     options?: { session?: Session; gitChoice?: number; isError?: boolean },
@@ -283,6 +283,15 @@ export class ScreenRenderer {
         value,
         "",
         sgr(90) + "Press any key to dismiss" + RESET,
+      ];
+      this.renderCenteredLines(lines);
+    } else if (type === "sync-message") {
+      const lines = [
+        sgr(1, 33) + "Sync" + RESET,
+        "",
+        "Commit message: " + sgr(36) + value + RESET + sgr(90) + "|" + RESET,
+        "",
+        sgr(90) + "Enter to sync, Esc to cancel" + RESET,
       ];
       this.renderCenteredLines(lines);
     } else if (type === "sync-running") {
