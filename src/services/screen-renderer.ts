@@ -210,7 +210,7 @@ export class ScreenRenderer {
    * Blocks passthrough and takes over the viewport.
    */
   enterModal(
-    type: "session-creator" | "confirm-close" | "git-select" | "git-message" | "git-running" | "git-result" | "sync-running" | "sync-result",
+    type: "session-creator" | "confirm-close" | "git-select" | "git-message" | "git-running" | "git-result" | "sync-running" | "sync-result" | "workspace-creating",
     value: string,
     state: AppState,
     options?: { session?: Session; gitChoice?: number; isError?: boolean },
@@ -303,6 +303,13 @@ export class ScreenRenderer {
         value,
         "",
         sgr(90) + "Press any key to dismiss" + RESET,
+      ];
+      this.renderCenteredLines(lines);
+    } else if (type === "workspace-creating") {
+      const lines = [
+        sgr(1, 33) + "Creating workspace..." + RESET,
+        "",
+        sgr(36) + value + RESET,
       ];
       this.renderCenteredLines(lines);
     }
@@ -403,6 +410,8 @@ export class ScreenRenderer {
       left.push(sgr(33) + "[CLOSE?] " + RESET);
     } else if (state.mode.startsWith("git-")) {
       left.push(sgr(35) + "[GIT] " + RESET);
+    } else if (state.mode === "workspace-creating") {
+      left.push(sgr(33) + "[CREATING] " + RESET);
     } else if (state.mode.startsWith("sync-")) {
       left.push(sgr(33) + "[SYNC] " + RESET);
     }

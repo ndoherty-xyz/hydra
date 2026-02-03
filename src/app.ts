@@ -226,6 +226,12 @@ export class HydraApp {
       return;
     }
 
+    if (state.mode === "workspace-creating") {
+      this.renderer.enterModal("workspace-creating", "Copying repository...", state);
+      this.lastMode = state.mode;
+      return;
+    }
+
     if (state.mode === "sync-running") {
       this.renderer.enterModal("sync-running", this.syncProgressMessage, state);
       this.lastMode = state.mode;
@@ -330,7 +336,7 @@ export class HydraApp {
     if (data === "\r" || data === "\n") {
       const trimmed = this.sessionCreatorValue.trim();
       if (trimmed.length > 0) {
-        this.store.dispatch({ type: "SET_MODE", mode: "normal" });
+        this.store.dispatch({ type: "SET_MODE", mode: "workspace-creating" });
         this.error = null;
         try {
           await this.sessionManager.createSession(
@@ -341,6 +347,7 @@ export class HydraApp {
         } catch (err) {
           this.error = err instanceof Error ? err.message : String(err);
         }
+        this.store.dispatch({ type: "SET_MODE", mode: "normal" });
       }
       return;
     }
