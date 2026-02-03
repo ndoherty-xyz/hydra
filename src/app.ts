@@ -3,6 +3,7 @@ import { ScreenRenderer } from "./services/screen-renderer.js";
 import { InputHandler } from "./services/input-handler.js";
 import { SessionManager } from "./services/session-manager.js";
 import { installSignalHandlers, cleanupAllSessions } from "./services/cleanup.js";
+import type { AppMode } from "./state/types.js";
 
 export class HydraApp {
   private store: AppStore;
@@ -18,6 +19,10 @@ export class HydraApp {
   private sessionCreatorValue = "";
   private error: string | null = null;
 
+  // Rendering state tracking
+  private lastRenderedSessionId: string | null = null;
+  private lastMode: AppMode = "normal";
+
   constructor(repoRoot: string) {
     this.repoRoot = repoRoot;
     this.store = new AppStore();
@@ -32,20 +37,27 @@ export class HydraApp {
       onConfirmDialogInput: (data) => this.onConfirmDialogInput(data),
     });
 
-    // Wire PTY data to trigger re-renders
-    this.sessionManager.onPtyData = (sessionId) => {
+    // Wire raw PTY passthrough
+    this.sessionManager.onRawPtyData = (sessionId, data) => {
       const state = this.store.getState();
-      if (sessionId === state.activeSessionId) {
-        this.renderer.scheduleRender();
+      if (sessionId === state.activeSessionId && state.mode === "normal") {
+        this.renderer.writePassthrough(data);
       }
     };
 
-    // Wire renderer's render callback
-    this.renderer.onRenderNeeded = () => this.render();
+    // Redraw chrome after each debounced PTY batch, since passthrough
+    // output may contain ED/clear sequences that wipe the chrome area.
+    this.sessionManager.onPtyData = (sessionId) => {
+      const state = this.store.getState();
+      if (sessionId === state.activeSessionId && state.mode === "normal") {
+        this.renderer.updateState(state);
+        this.renderer.drawChrome();
+      }
+    };
   }
 
   async run(): Promise<void> {
-    // Initialize renderer (sets scroll region, hides cursor)
+    // Initialize renderer (sets scroll region)
     this.renderer.initialize();
 
     // Start input handler (raw mode)
@@ -85,23 +97,60 @@ export class HydraApp {
 
   private render(): void {
     const state = this.store.getState();
+    const activeSession = state.sessions.find(
+      (s) => s.id === state.activeSessionId,
+    );
 
+    // Modal entry: creating-session or confirming-close
     if (state.mode === "creating-session") {
-      this.renderer.renderChrome(state);
-      this.renderer.renderModal("session-creator", this.sessionCreatorValue);
+      this.renderer.enterModal(
+        "session-creator",
+        this.sessionCreatorValue,
+        state,
+      );
+      this.lastMode = state.mode;
       return;
     }
 
     if (state.mode === "confirming-close") {
-      const activeSession = state.sessions.find(
-        (s) => s.id === state.activeSessionId,
-      );
-      this.renderer.renderChrome(state);
-      this.renderer.renderModal("confirm-close", "", activeSession);
+      this.renderer.enterModal("confirm-close", "", state, activeSession);
+      this.lastMode = state.mode;
       return;
     }
 
-    this.renderer.renderFrame(state);
+    // Modal exit: was in a modal, now back to normal
+    if (this.lastMode !== "normal" && state.mode === "normal") {
+      this.renderer.updateState(state);
+      this.renderer.exitModal(activeSession);
+      this.lastMode = state.mode;
+      this.lastRenderedSessionId = state.activeSessionId;
+      return;
+    }
+
+    // Session switch
+    if (state.activeSessionId !== this.lastRenderedSessionId) {
+      if (activeSession) {
+        this.renderer.handleSessionSwitch(activeSession, state);
+        this.lastRenderedSessionId = state.activeSessionId;
+        this.lastMode = state.mode;
+        return;
+      }
+
+      // No active session but there was one before — show placeholder
+      if (this.lastRenderedSessionId !== null) {
+        this.renderer.updateState(state);
+        this.renderer.renderPlaceholder();
+        this.renderer.drawChrome();
+        this.lastRenderedSessionId = null;
+        this.lastMode = state.mode;
+        return;
+      }
+    }
+
+    // Default: update state and redraw chrome (handles exit label changes, etc.)
+    this.renderer.updateState(state);
+    this.renderer.requestChromeRedraw();
+    this.lastMode = state.mode;
   }
 
   private handleResize(): void {
@@ -114,8 +163,25 @@ export class HydraApp {
       this.renderer.rows,
     );
 
-    // Force re-render
-    this.render();
+    const state = this.store.getState();
+    const activeSession = state.sessions.find(
+      (s) => s.id === state.activeSessionId,
+    );
+
+    if (state.mode === "normal" && activeSession) {
+      // Repaint viewport from xterm buffer after resize
+      this.renderer.updateState(state);
+      this.renderer.repaintViewport(activeSession);
+      this.renderer.drawChrome();
+    } else if (state.mode !== "normal") {
+      // Re-render modal
+      this.render();
+    } else {
+      // No active session
+      this.renderer.updateState(state);
+      this.renderer.renderPlaceholder();
+      this.renderer.drawChrome();
+    }
   }
 
   private onCreateSession(): void {

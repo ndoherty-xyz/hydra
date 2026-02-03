@@ -15,6 +15,7 @@ export class SessionManager {
   private worktreeManager: WorktreeManager;
   private repoRoot: string;
   onPtyData: ((sessionId: string) => void) | null = null;
+  onRawPtyData: ((sessionId: string, data: string) => void) | null = null;
 
   constructor(store: AppStore, repoRoot: string) {
     this.store = store;
@@ -50,6 +51,9 @@ export class SessionManager {
     };
 
     proc.onData((data) => {
+      // Fire raw callback immediately for passthrough (zero added latency)
+      this.onRawPtyData?.(sessionId, data);
+
       pendingChunks.push(data);
       if (flushTimer !== null) {
         clearTimeout(flushTimer);

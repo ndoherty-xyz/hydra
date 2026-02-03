@@ -4,27 +4,30 @@ import {
   setScrollRegion,
   resetScrollRegion,
   clearLine,
-  HIDE_CURSOR,
   SHOW_CURSOR,
   RESET,
   sgr,
+  SAVE_CURSOR,
+  RESTORE_CURSOR,
 } from "../utils/ansi.js";
 import { CHROME_ROWS } from "../utils/constants.js";
-import { renderLine, renderBuffer } from "./buffer-renderer.js";
-import type { AppState, AppMode, Session } from "../state/types.js";
-
-const FALLBACK_POLL_MS = 500;
+import { renderBuffer } from "./buffer-renderer.js";
+import type { AppState, Session } from "../state/types.js";
 
 export class ScreenRenderer {
   private totalRows = 0;
   private totalCols = 0;
   private viewportRows = 0;
-  private lastRenderedBaseY: Map<string, number> = new Map();
-  private lastActiveSessionId: string | null = null;
-  private prevFrame = "";
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
-  private pendingRender = false;
-  private renderTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastKnownState: AppState | null = null;
+  private isModalActive = false;
+  private chromeNeedsRedraw = false;
+
+  // Sequences to filter from passthrough
+  private static DECSTBM_RE = /\x1b\[\d*;?\d*r/g;
+  private static ALT_SCREEN_RE = /\x1b\[\?(?:1049|47|1047)[hl]/g;
+  private static KITTY_KBD_RE = /\x1b\[>[0-9;]*u/g;
+  private static DSR_RE = /\x1b\[6n/g;
+  private static DA_RE = /\x1b\[[>=]?c/g;
 
   get cols(): number {
     return this.totalCols;
@@ -39,9 +42,6 @@ export class ScreenRenderer {
     this.totalCols = process.stdout.columns;
     this.viewportRows = Math.max(1, this.totalRows - CHROME_ROWS);
 
-    // Hide cursor
-    process.stdout.write(HIDE_CURSOR);
-
     // Clear screen
     process.stdout.write("\x1b[2J\x1b[H");
 
@@ -50,24 +50,10 @@ export class ScreenRenderer {
 
     // Position cursor at top of scroll region
     process.stdout.write(cursorTo(1, 1));
-
-    // Start fallback poll
-    this.pollTimer = setInterval(() => {
-      this.scheduleRender();
-    }, FALLBACK_POLL_MS);
   }
 
   cleanup(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
-    if (this.renderTimer) {
-      clearTimeout(this.renderTimer);
-      this.renderTimer = null;
-    }
-
-    // Reset scroll region, show cursor, clear screen
+    // Reset scroll region, show cursor, move to bottom
     process.stdout.write(resetScrollRegion());
     process.stdout.write(SHOW_CURSOR);
     process.stdout.write(cursorTo(this.totalRows, 1));
@@ -82,117 +68,192 @@ export class ScreenRenderer {
     // Re-establish scroll region
     process.stdout.write(setScrollRegion(1, this.viewportRows));
 
-    // Force full re-render
-    this.prevFrame = "";
-    this.lastRenderedBaseY.clear();
+    // Mark chrome dirty
+    this.chromeNeedsRedraw = true;
   }
 
-  scheduleRender(): void {
-    if (this.pendingRender) return;
-    this.pendingRender = true;
-    this.renderTimer = setTimeout(() => {
-      this.pendingRender = false;
-      this.renderTimer = null;
-      // Emit event or call render directly - will be wired by app controller
-      this.onRenderNeeded?.();
-    }, 0);
+  /**
+   * Hot path: write raw PTY data directly to stdout.
+   * If a modal is active, data is silently dropped (xterm still receives it).
+   */
+  writePassthrough(data: string): void {
+    if (this.isModalActive) return;
+
+    if (this.chromeNeedsRedraw) {
+      this.drawChrome();
+    }
+
+    const safe = data
+      .replace(ScreenRenderer.DECSTBM_RE, setScrollRegion(1, this.viewportRows))
+      .replace(ScreenRenderer.ALT_SCREEN_RE, "")
+      .replace(ScreenRenderer.KITTY_KBD_RE, "")
+      .replace(ScreenRenderer.DSR_RE, "")
+      .replace(ScreenRenderer.DA_RE, "");
+    process.stdout.write(safe);
   }
 
-  onRenderNeeded: (() => void) | null = null;
+  /**
+   * Draw chrome (status bar) using cursor save/restore so that the
+   * passthrough cursor position is not disturbed.
+   */
+  drawChrome(): void {
+    this.chromeNeedsRedraw = false;
 
-  renderFrame(state: AppState): void {
-    const activeSession = state.sessions.find(
-      (s) => s.id === state.activeSessionId,
-    );
+    const state = this.lastKnownState;
+    if (!state) return;
 
-    // Handle session switch: print separator
-    if (state.activeSessionId !== this.lastActiveSessionId) {
-      if (this.lastActiveSessionId !== null && activeSession) {
-        this.printSessionSeparator(activeSession.branch);
-      }
-      this.lastActiveSessionId = state.activeSessionId;
-      this.prevFrame = "";
-    }
-
-    // Render chrome (always)
-    this.renderChrome(state);
-
-    if (!activeSession) {
-      // No session - show placeholder in viewport
-      this.renderPlaceholder();
-      return;
-    }
-
-    // Stream new scrollback lines, then overwrite viewport
-    this.streamAndRenderViewport(activeSession);
-  }
-
-  private streamAndRenderViewport(session: Session): void {
-    const terminal = session.terminal;
-    const buffer = terminal.buffer.active;
-    const currentBaseY = buffer.baseY;
-    const lastBaseY = this.lastRenderedBaseY.get(session.id) ?? 0;
-
-    // If baseY has increased, new lines have scrolled off the viewport top.
-    // Print them into the scroll region so they enter native scrollback.
-    if (currentBaseY > lastBaseY) {
-      const newLines = currentBaseY - lastBaseY;
-      const cell = buffer.getNullCell();
-
-      // Position cursor at bottom of scroll region to trigger scrolling
-      process.stdout.write(cursorTo(this.viewportRows, 1));
-
-      for (let i = 0; i < newLines; i++) {
-        const lineIdx = lastBaseY + i;
-        const bufferLine = buffer.getLine(lineIdx);
-        if (bufferLine) {
-          const rendered = renderLine(bufferLine, terminal.cols, cell);
-          // Print with newline to scroll the region
-          process.stdout.write("\n" + clearLine() + rendered);
-        } else {
-          process.stdout.write("\n" + clearLine());
-        }
-      }
-
-      this.lastRenderedBaseY.set(session.id, currentBaseY);
-    }
-
-    // Overwrite the current viewport in-place
-    const viewportLines = renderBuffer(terminal, 0, this.viewportRows);
-    const frame = viewportLines.join("\n");
-
-    if (frame !== this.prevFrame) {
-      this.prevFrame = frame;
-
-      for (let i = 0; i < this.viewportRows; i++) {
-        const row = i + 1; // 1-indexed
-        process.stdout.write(
-          cursorTo(row, 1) + clearLine() + (viewportLines[i] ?? "") + RESET,
-        );
-      }
-    }
-
-    // Park cursor at bottom of scroll region (hidden, so position doesn't matter visually)
-    process.stdout.write(cursorTo(this.viewportRows, 1));
-  }
-
-  renderChrome(state: AppState): void {
     const topBorderRow = this.totalRows - 2;
     const chromeRow = this.totalRows - 1;
     const bottomBorderRow = this.totalRows;
-
     const border = sgr(90) + "─".repeat(this.totalCols) + RESET;
 
-    // Top border
-    process.stdout.write(cursorTo(topBorderRow, 1) + clearLine() + border);
-
-    // Single chrome line: tabs on left, keybindings on right
     process.stdout.write(
-      cursorTo(chromeRow, 1) + clearLine() + this.formatChromeLine(state),
+      SAVE_CURSOR +
+      resetScrollRegion() +
+      cursorTo(topBorderRow, 1) + clearLine() + border +
+      cursorTo(chromeRow, 1) + clearLine() + this.formatChromeLine(state) +
+      cursorTo(bottomBorderRow, 1) + clearLine() + border +
+      setScrollRegion(1, this.viewportRows) +
+      RESTORE_CURSOR
     );
+  }
 
-    // Bottom border
-    process.stdout.write(cursorTo(bottomBorderRow, 1) + clearLine() + border);
+  /**
+   * Repaint the full viewport from a session's xterm buffer.
+   * Used for session switches and modal exit.
+   */
+  repaintViewport(session: Session): void {
+    const terminal = session.terminal;
+    const buffer = terminal.buffer.active;
+
+    // Temporarily reset scroll region so we can write to all viewport rows
+    process.stdout.write(resetScrollRegion());
+
+    const viewportLines = renderBuffer(terminal, 0, this.viewportRows);
+
+    for (let i = 0; i < this.viewportRows; i++) {
+      const row = i + 1; // 1-indexed
+      process.stdout.write(
+        cursorTo(row, 1) + clearLine() + (viewportLines[i] ?? "") + RESET,
+      );
+    }
+
+    // Restore scroll region
+    process.stdout.write(setScrollRegion(1, this.viewportRows));
+
+    // Position cursor where the terminal's cursor is
+    const cursorY = buffer.cursorY + 1; // 1-indexed
+    const cursorX = buffer.cursorX + 1; // 1-indexed
+    process.stdout.write(cursorTo(cursorY, cursorX));
+  }
+
+  /**
+   * Handle a session switch: update state, repaint viewport, redraw chrome.
+   */
+  handleSessionSwitch(session: Session, state: AppState): void {
+    this.updateState(state);
+    this.repaintViewport(session);
+    this.drawChrome();
+  }
+
+  /**
+   * Enter a modal (session creator or confirm close).
+   * Blocks passthrough and takes over the viewport.
+   */
+  enterModal(
+    type: "session-creator" | "confirm-close",
+    value: string,
+    state: AppState,
+    session?: Session,
+  ): void {
+    this.isModalActive = true;
+    this.updateState(state);
+
+    // Reset scroll region so we can write to full viewport
+    process.stdout.write(resetScrollRegion());
+
+    // Clear viewport area for modal
+    for (let i = 1; i <= this.viewportRows; i++) {
+      process.stdout.write(cursorTo(i, 1) + clearLine());
+    }
+
+    if (type === "session-creator") {
+      const lines = [
+        sgr(1, 32) + "New Session" + RESET,
+        "Branch name: " + sgr(36) + value + RESET + sgr(90) + "|" + RESET,
+        sgr(90) + "Enter to create, Esc to cancel" + RESET,
+      ];
+      this.renderCenteredLines(lines);
+    } else if (type === "confirm-close" && session) {
+      const msg = `Close session "${session.branch}"? This will remove the worktree.`;
+      const lines = [
+        sgr(1, 33) + "Confirm" + RESET,
+        msg,
+        sgr(90) + "y/n" + RESET,
+      ];
+      this.renderCenteredLines(lines);
+    }
+
+    // Restore scroll region and draw chrome
+    process.stdout.write(setScrollRegion(1, this.viewportRows));
+    this.drawChrome();
+  }
+
+  /**
+   * Exit a modal. Repaints viewport from session buffer (or placeholder),
+   * then redraws chrome.
+   */
+  exitModal(session: Session | undefined): void {
+    this.isModalActive = false;
+
+    if (session) {
+      this.repaintViewport(session);
+    } else {
+      this.renderPlaceholder();
+    }
+
+    this.drawChrome();
+  }
+
+  /**
+   * Cache the latest app state and mark chrome dirty if the active session changed.
+   */
+  updateState(state: AppState): void {
+    const prevActiveId = this.lastKnownState?.activeSessionId ?? null;
+    this.lastKnownState = state;
+
+    if (state.activeSessionId !== prevActiveId) {
+      this.chromeNeedsRedraw = true;
+    }
+  }
+
+  /**
+   * Mark chrome as needing a redraw and draw immediately if not in a modal.
+   */
+  requestChromeRedraw(): void {
+    this.chromeNeedsRedraw = true;
+    if (!this.isModalActive) {
+      this.drawChrome();
+    }
+  }
+
+  renderPlaceholder(): void {
+    const msg = "No active session. Press Ctrl+B, N to create one.";
+    const midRow = Math.floor(this.viewportRows / 2) + 1;
+    const midCol = Math.max(1, Math.floor((this.totalCols - msg.length) / 2));
+
+    // Reset scroll region temporarily
+    process.stdout.write(resetScrollRegion());
+
+    // Clear viewport
+    for (let i = 1; i <= this.viewportRows; i++) {
+      process.stdout.write(cursorTo(i, 1) + clearLine());
+    }
+
+    process.stdout.write(cursorTo(midRow, midCol) + sgr(90) + msg + RESET);
+
+    // Restore scroll region
+    process.stdout.write(setScrollRegion(1, this.viewportRows));
   }
 
   private formatChromeLine(state: AppState): string {
@@ -238,7 +299,10 @@ export class ScreenRenderer {
     }
 
     // Exit code indicator
-    if (activeSession?.exitCode !== null && activeSession?.exitCode !== undefined) {
+    if (
+      activeSession?.exitCode !== null &&
+      activeSession?.exitCode !== undefined
+    ) {
       left.push(sgr(31) + ` exited(${activeSession.exitCode})` + RESET);
     }
 
@@ -258,61 +322,11 @@ export class ScreenRenderer {
     return str.replace(/\x1b\[[0-9;]*m/g, "").length;
   }
 
-  private renderPlaceholder(): void {
-    const msg = "No active session. Press Ctrl+B, N to create one.";
-    const midRow = Math.floor(this.viewportRows / 2) + 1;
-    const midCol = Math.max(1, Math.floor((this.totalCols - msg.length) / 2));
-
-    // Clear viewport
-    for (let i = 1; i <= this.viewportRows; i++) {
-      process.stdout.write(cursorTo(i, 1) + clearLine());
-    }
-
-    process.stdout.write(
-      cursorTo(midRow, midCol) + sgr(90) + msg + RESET,
-    );
-  }
-
-  private printSessionSeparator(branch: string): void {
-    const label = `--- session: ${branch} ---`;
-    const pad = Math.max(0, this.totalCols - label.length);
-    const line =
-      sgr(2, 90) + label + "-".repeat(pad) + RESET;
-
-    // Position at bottom of scroll region and print with newline to scroll
-    process.stdout.write(cursorTo(this.viewportRows, 1));
-    process.stdout.write("\n" + clearLine() + line);
-  }
-
-  renderModal(type: "session-creator" | "confirm-close", value: string, session?: Session): void {
-    // Invalidate frame cache so next renderFrame does a full redraw
-    this.prevFrame = "";
-
-    // Clear viewport area for modal
-    for (let i = 1; i <= this.viewportRows; i++) {
-      process.stdout.write(cursorTo(i, 1) + clearLine());
-    }
-
-    if (type === "session-creator") {
-      const lines = [
-        sgr(1, 32) + "New Session" + RESET,
-        "Branch name: " + sgr(36) + value + RESET + sgr(90) + "|" + RESET,
-        sgr(90) + "Enter to create, Esc to cancel" + RESET,
-      ];
-      this.renderCenteredLines(lines);
-    } else if (type === "confirm-close" && session) {
-      const msg = `Close session "${session.branch}"? This will remove the worktree.`;
-      const lines = [
-        sgr(1, 33) + "Confirm" + RESET,
-        msg,
-        sgr(90) + "y/n" + RESET,
-      ];
-      this.renderCenteredLines(lines);
-    }
-  }
-
   private renderCenteredLines(lines: string[]): void {
-    const startRow = Math.max(1, Math.floor(this.viewportRows / 2) - Math.floor(lines.length / 2));
+    const startRow = Math.max(
+      1,
+      Math.floor(this.viewportRows / 2) - Math.floor(lines.length / 2),
+    );
     for (let i = 0; i < lines.length; i++) {
       const len = this.visibleLength(lines[i]!);
       const col = Math.max(1, Math.floor((this.totalCols - len) / 2));
