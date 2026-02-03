@@ -5,6 +5,7 @@ import {
   resetScrollRegion,
   clearLine,
   SHOW_CURSOR,
+  DISABLE_FOCUS_REPORTING,
   RESET,
   sgr,
   SAVE_CURSOR,
@@ -29,6 +30,7 @@ export class ScreenRenderer {
   private static KITTY_KBD_RE = /\x1b\[>[0-9;]*u/g;
   private static DSR_RE = /\x1b\[6n/g;
   private static DA_RE = /\x1b\[[>=]?c/g;
+  private static FOCUS_REPORTING_RE = /\x1b\[\?1004[hl]/g;
 
   setSessionStatuses(statuses: Map<string, { status: SessionStatus }>): void {
     this.sessionStatuses = new Map(
@@ -63,6 +65,7 @@ export class ScreenRenderer {
     // Reset scroll region, show cursor, move to bottom
     process.stdout.write(resetScrollRegion());
     process.stdout.write(SHOW_CURSOR);
+    process.stdout.write(DISABLE_FOCUS_REPORTING);
     process.stdout.write(cursorTo(this.totalRows, 1));
     process.stdout.write("\n");
   }
@@ -95,7 +98,8 @@ export class ScreenRenderer {
       .replace(ScreenRenderer.ALT_SCREEN_RE, "")
       .replace(ScreenRenderer.KITTY_KBD_RE, "")
       .replace(ScreenRenderer.DSR_RE, "")
-      .replace(ScreenRenderer.DA_RE, "");
+      .replace(ScreenRenderer.DA_RE, "")
+      .replace(ScreenRenderer.FOCUS_REPORTING_RE, "");
     process.stdout.write(safe);
   }
 

@@ -1,7 +1,7 @@
 import type { Session } from "../state/types.js";
 import { killPty } from "./pty-manager.js";
 import { disposeTerminal } from "./terminal-emulator.js";
-import { resetScrollRegion, SHOW_CURSOR } from "../utils/ansi.js";
+import { resetScrollRegion, SHOW_CURSOR, DISABLE_FOCUS_REPORTING } from "../utils/ansi.js";
 
 /**
  * Clean up all active sessions: kill PTYs and dispose terminals.
@@ -46,6 +46,7 @@ export function installSignalHandlers(
 
     // Restore terminal
     process.stdout.write(SHOW_CURSOR);
+    process.stdout.write(DISABLE_FOCUS_REPORTING);
     process.stdout.write(resetScrollRegion());
 
     onExit();
