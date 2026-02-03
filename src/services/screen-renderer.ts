@@ -130,8 +130,46 @@ export class ScreenRenderer {
   }
 
   /**
+   * Restore a session's full scrollback + viewport into the native terminal.
+   * Clears native scrollback, then writes ALL lines from the xterm buffer
+   * through the scroll region so overflow naturally enters native scrollback.
+   * Used on session switch so scrolling up shows the correct session's history.
+   */
+  restoreSessionScrollback(session: Session): void {
+    const terminal = session.terminal;
+    const buffer = terminal.buffer.active;
+    const totalLines = buffer.baseY + terminal.rows;
+
+    // Clear native scrollback
+    process.stdout.write("\x1b[3J");
+
+    // Ensure scroll region is set
+    process.stdout.write(setScrollRegion(1, this.viewportRows));
+
+    // Cursor to top of scroll region
+    process.stdout.write(cursorTo(1, 1));
+
+    // Render all lines: scrollback (0..baseY-1) + viewport (baseY..baseY+rows-1)
+    const allLines = renderBuffer(terminal, buffer.baseY, totalLines);
+
+    // Write each line through the scroll region; overflow scrolls into native scrollback
+    for (let i = 0; i < allLines.length; i++) {
+      if (i > 0) {
+        process.stdout.write("\r\n");
+      }
+      process.stdout.write(allLines[i] ?? "");
+    }
+    process.stdout.write(RESET);
+
+    // Position cursor where the terminal's cursor is
+    const cursorY = buffer.cursorY + 1;
+    const cursorX = buffer.cursorX + 1;
+    process.stdout.write(cursorTo(cursorY, cursorX));
+  }
+
+  /**
    * Repaint the full viewport from a session's xterm buffer.
-   * Used for session switches and modal exit.
+   * Used for modal exit and resize where scrollback is already correct.
    */
   repaintViewport(session: Session): void {
     const terminal = session.terminal;
@@ -163,7 +201,7 @@ export class ScreenRenderer {
    */
   handleSessionSwitch(session: Session, state: AppState): void {
     this.updateState(state);
-    this.repaintViewport(session);
+    this.restoreSessionScrollback(session);
     this.drawChrome();
   }
 
