@@ -10,7 +10,7 @@ export interface Session {
   exitCode: number | null;
 }
 
-export type AppMode = "normal" | "creating-session" | "confirming-close" | "workspace-creating" | "git-select" | "git-message" | "git-running" | "git-result" | "sync-running" | "sync-result";
+export type AppMode = "normal" | "creating-session" | "confirming-close" | "workspace-creating" | "git-select" | "git-message" | "git-running" | "git-result" | "sync-message" | "sync-running" | "sync-result";
 
 export type SessionStatus = "idle" | "working" | "waiting";
 

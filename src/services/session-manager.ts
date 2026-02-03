@@ -91,8 +91,8 @@ export class SessionManager {
     this.store.dispatch({ type: "REMOVE_SESSION", sessionId: session.id });
   }
 
-  async syncToOrigin(workspacePath: string, branch: string): Promise<void> {
-    await this.workspaceManager.syncToOrigin(workspacePath, branch);
+  async syncToOrigin(workspacePath: string, branch: string, message: string): Promise<void> {
+    await this.workspaceManager.syncToOrigin(workspacePath, branch, message);
   }
 
   resizeAllSessions(sessions: Session[], newCols: number, newRows: number): void {

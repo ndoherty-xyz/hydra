@@ -113,12 +113,13 @@ export class WorkspaceManager {
   async syncToOrigin(
     workspacePath: string,
     branch: string,
+    message: string,
   ): Promise<void> {
     const git = simpleGit(workspacePath);
 
     // Stage all changes and commit
     await git.add("-A");
-    await git.commit("hydra sync", { "--allow-empty": null });
+    await git.commit(message, { "--allow-empty": null });
 
     // Push the branch directly into the original repo's refs via local path
     await git.push(this.repoRoot, `${branch}:${branch}`);

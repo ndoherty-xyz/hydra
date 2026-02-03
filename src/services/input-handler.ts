@@ -14,6 +14,7 @@ export interface InputHandlerCallbacks {
   onGitMessageInput: (data: string) => void;
   onGitResultInput: (data: string) => void;
   onSync: () => void;
+  onSyncMessageInput: (data: string) => void;
   onSyncResultInput: (data: string) => void;
 }
 
@@ -94,6 +95,11 @@ export class InputHandler {
 
     if (state.mode === "git-result") {
       this.callbacks.onGitResultInput(str);
+      return;
+    }
+
+    if (state.mode === "sync-message") {
+      this.callbacks.onSyncMessageInput(str);
       return;
     }
 
