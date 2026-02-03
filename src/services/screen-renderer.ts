@@ -315,8 +315,25 @@ export class ScreenRenderer {
       (s) => s.id === state.activeSessionId,
     );
 
-    // hydra label
-    left.push(sgr(1, 32) + " hydra " + RESET); // bold green
+    // hydra label — green→cyan gradient
+    left.push(
+      " " +
+        sgr(38, 2, 100, 110, 120) +
+        "[" +
+        sgr(1, 38, 2, 72, 209, 104) +
+        "h" +
+        sgr(1, 38, 2, 45, 200, 145) +
+        "y" +
+        sgr(1, 38, 2, 25, 191, 186) +
+        "d" +
+        sgr(1, 38, 2, 20, 182, 218) +
+        "r" +
+        sgr(1, 38, 2, 56, 176, 245) +
+        "a" +
+        sgr(38, 2, 100, 110, 120) +
+        "] " +
+        RESET,
+    );
     left.push(sgr(90) + "| " + RESET);
 
     // Mode indicator
